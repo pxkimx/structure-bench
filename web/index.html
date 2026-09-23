@@ -1,0 +1,852 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Structure Bench</title>
+<meta name="author" content="Paul H. Kim, Ph.D.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='.5' y='.5' width='31' height='31' rx='7.5' fill='%230d1b22'/><path d='M5.5 21.5C8 11 11.5 9 14 15.5S20 24 22.5 17 25.5 8.5 27 10' stroke='%236a7b84' stroke-width='1.3' fill='none' stroke-linecap='round'/><circle cx='5.5' cy='21.5' r='2.1' fill='%23FF7D45'/><circle cx='10.2' cy='11.6' r='2.3' fill='%2365CBF3'/><circle cx='15' cy='17.4' r='2.5' fill='%230053D6'/><circle cx='20.4' cy='20.6' r='2.3' fill='%2300e0cf'/><circle cx='24.4' cy='11.8' r='2.1' fill='%23FFDB13'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#f3f5f6; --bg2:#e9eef0; --panel:#ffffff; --panel2:#f8fafb; --ink:#0d1b22; --ink2:#33454f; --muted:#6a7b84; --line:#dde4e8; --line2:#eef2f4;
+  --accent:#0f766e; --accent2:#14b8a6; --accent-soft:#e0f4f1; --accent-ink:#ffffff;
+  --warn:#b45309; --warn-soft:#fdf0dc; --info:#3056a8; --info-soft:#e7eefb; --up:#c9304f; --down:#2a64b0;
+  --glow:rgba(20,184,166,.18); --shadow:0 1px 2px rgba(13,27,34,.04),0 8px 24px -12px rgba(13,27,34,.12);
+  --sans:"Geist",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; --mono:"Geist Mono",ui-monospace,Menlo,monospace;
+  --r:14px;
+  --af1:#0053D6; --af2:#65CBF3; --af3:#FFDB13; --af4:#FF7D45;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0b1115; --bg2:#0f171c; --panel:#121b21; --panel2:#162129; --ink:#e4ecef; --ink2:#b8c6cc; --muted:#83959d; --line:#22313a; --line2:#1a262d;
+  --accent:#2dd4bf; --accent2:#5eead4; --accent-soft:#12302e; --accent-ink:#04201d;
+  --warn:#f5b454; --warn-soft:#33250f; --info:#8fb0f5; --info-soft:#18233a; --up:#f27a92; --down:#6ea8f0;
+  --glow:rgba(45,212,191,.14); --shadow:0 1px 2px rgba(0,0,0,.3),0 12px 30px -14px rgba(0,0,0,.6);
+}}
+:root[data-theme="dark"]{
+  --bg:#0b1115; --bg2:#0f171c; --panel:#121b21; --panel2:#162129; --ink:#e4ecef; --ink2:#b8c6cc; --muted:#83959d; --line:#22313a; --line2:#1a262d;
+  --accent:#2dd4bf; --accent2:#5eead4; --accent-soft:#12302e; --accent-ink:#04201d;
+  --warn:#f5b454; --warn-soft:#33250f; --info:#8fb0f5; --info-soft:#18233a; --up:#f27a92; --down:#6ea8f0;
+  --glow:rgba(45,212,191,.14); --shadow:0 1px 2px rgba(0,0,0,.3),0 12px 30px -14px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--mono)}
+[hidden]{display:none!important}
+
+/* shell */
+.shell{display:grid;grid-template-columns:276px minmax(0,1fr);min-height:100%}
+aside.side{position:sticky;top:0;height:100vh;border-right:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;padding:18px 14px;gap:18px;overflow:auto}
+.logo{display:flex;align-items:center;gap:12px;padding:6px 4px 2px;text-decoration:none;color:var(--ink);min-width:0}
+.logo svg{flex:none;filter:drop-shadow(0 3px 12px var(--glow))}
+.logo b{display:block;font-weight:680;font-size:20px;letter-spacing:-.025em;line-height:1.1}
+.logo .who{display:block;font-size:11.5px;color:var(--ink2);font-weight:550;font-style:italic;margin-top:3px;letter-spacing:.005em}
+.logo small{display:block;font:500 9.5px var(--mono);color:var(--muted);letter-spacing:.01em;margin-top:3px}
+.navlabel{font:500 10.5px var(--mono);text-transform:uppercase;letter-spacing:.1em;color:var(--muted);padding:0 8px;margin-bottom:6px}
+.nav a{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:9px;color:var(--ink2);text-decoration:none;font-weight:500}
+.nav a:hover{background:var(--bg2);color:var(--ink)}
+.nav a.on{background:var(--accent-soft);color:var(--accent)}
+.nav a i{width:18px;height:18px;border-radius:6px;display:grid;place-items:center;font:600 10px var(--mono);font-style:normal;background:var(--bg2);color:var(--muted);flex:none}
+.nav a.on i{background:var(--accent);color:var(--accent-ink)}
+.nav.sr a{font-size:12.5px;padding:6px 8px;gap:8px}
+.nav.sr a small{display:block;font:10.5px var(--mono);color:var(--muted)}
+.nav.sr a span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dl a{display:flex;justify-content:space-between;gap:8px;padding:6px 8px;border-radius:8px;text-decoration:none;color:var(--ink2);font-size:13px}
+.dl a:hover{background:var(--bg2)}
+.dl a span:last-child{color:var(--muted);font:11px var(--mono)}
+.side .foot{margin-top:auto;display:flex;gap:6px;align-items:center;color:var(--muted);font-size:12px;padding:0 6px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel);font-weight:550;cursor:pointer;text-decoration:none;color:var(--ink);white-space:nowrap;transition:border-color .15s,background .15s,transform .05s}
+.btn:hover{border-color:var(--muted)}
+.btn:disabled{opacity:.45;cursor:not-allowed;filter:saturate(.6)}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.btn.primary:hover{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.accent{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.ghost:hover{background:var(--bg2)}
+.btn.sm{height:30px;padding:0 10px;font-size:13px;border-radius:8px}
+.btn.xs{height:24px;padding:0 8px;font-size:12px;border-radius:7px}
+.btn svg{width:16px;height:16px}
+main{min-width:0;padding:0 32px 64px}
+@media (max-width:900px){.shell{grid-template-columns:1fr}aside.side{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;padding:12px 16px}aside.side #navWrap,aside.side .dlwrap,aside.side .foot,aside.side #sideRecentWrap{display:none}aside.side #toolsWrap{margin-left:auto}aside.side #toolsWrap .navlabel{display:none}aside.side #toolsWrap .nav{display:flex;flex-direction:row;gap:4px}aside.side #toolsWrap .nav a span{display:none}main{padding:0 16px 48px}}
+
+/* home */
+.hero{position:relative;margin:24px 0 0;border-radius:22px;overflow:hidden;background:radial-gradient(1200px 400px at 80% -10%,var(--glow),transparent 60%),var(--panel);border:1px solid var(--line);box-shadow:var(--shadow)}
+.hero canvas{position:absolute;inset:0;width:100%;height:100%}
+.hero .in{position:relative;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:28px;padding:44px 40px 40px}
+@media (max-width:1000px){.hero .in{grid-template-columns:1fr;padding:28px 20px}}
+.eyebrow{display:inline-flex;align-items:center;gap:8px;font:500 11.5px var(--mono);letter-spacing:.04em;color:var(--accent);background:var(--accent-soft);padding:4px 10px;border-radius:99px}
+.hero h1{font-size:clamp(34px,4.4vw,56px);line-height:1.02;letter-spacing:-.045em;font-weight:650;margin:16px 0 14px;text-wrap:balance}
+.hero h1 em{font-style:normal;background:linear-gradient(90deg,var(--accent),#2563eb 90%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero p.lede{font-size:16px;color:var(--ink2);max-width:52ch;margin:0}
+.hero h1,.hero .lede,.hero .byline{text-shadow:0 0 14px var(--panel),0 0 6px var(--panel),0 1px 2px var(--panel)}
+.hero h1 em{text-shadow:none}
+.byline{margin:2px 0 10px;font-size:13px;color:var(--muted);font-style:italic}
+.byline b{color:var(--ink2);font-weight:600}
+.stack{display:flex;flex-wrap:wrap;gap:6px;margin-top:22px}
+.chip{font:500 11.5px var(--mono);padding:4px 9px;border-radius:7px;border:1px solid var(--line);background:color-mix(in srgb,var(--panel) 88%,transparent);color:var(--ink2)}
+.drop{background:color-mix(in srgb,var(--panel) 90%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:14px;box-shadow:var(--shadow);min-width:0}
+.zone{border:1.5px dashed var(--line);border-radius:14px;padding:22px 18px;text-align:center;cursor:pointer;transition:all .15s;background:var(--panel2);display:block}
+.zone:hover,.zone.over{border-color:var(--accent);background:var(--accent-soft)}
+.zone b{display:block;font-size:15px;margin:10px 0 2px}
+.zone small{color:var(--muted)}
+.zone .ic{width:44px;height:44px;border-radius:12px;background:var(--ink);color:var(--bg);display:inline-grid;place-items:center}
+.seg{display:inline-flex;padding:3px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);flex-wrap:wrap}
+.seg button{border:0;background:transparent;padding:5px 12px;border-radius:7px;font-weight:550;font-size:13px;color:var(--muted);cursor:pointer}
+.seg button.on{background:var(--panel);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.row.between{justify-content:space-between}
+.field{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:500;min-width:0}
+.inp,select.inp,textarea.inp{height:38px;border:1px solid var(--line);border-radius:9px;padding:0 11px;background:var(--panel2);font-size:14px;width:100%;color:var(--ink)}
+textarea.inp{height:auto;min-height:120px;padding:9px 11px;font:13px/1.5 var(--mono);resize:vertical}
+.inp.sm,select.inp.sm{height:32px;font-size:13px;padding:0 9px;width:auto}
+.lk{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:10px}
+@media (max-width:520px){.lk{grid-template-columns:1fr}}
+.examples{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.ex{all:unset;cursor:pointer;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--panel);display:flex;flex-direction:column;gap:3px;transition:border-color .15s,transform .15s;min-width:0}
+.ex:hover{border-color:var(--accent);transform:translateY(-1px)}
+.ex b{font-weight:600;font-size:13.5px}
+.ex small{color:var(--muted);font-size:12px;line-height:1.35}
+.ex .k{font:500 10.5px var(--mono);color:var(--accent);text-transform:uppercase;letter-spacing:.08em}
+.choices{display:flex;flex-direction:column;gap:6px}
+.choices .hint{margin-bottom:2px}
+.feat{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-top:22px}
+@media (max-width:1000px){.feat{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px){.feat,.examples{grid-template-columns:1fr}}
+.feat div{padding:16px;border-radius:14px;background:var(--panel);border:1px solid var(--line)}
+.feat h3{margin:8px 0 4px;font-size:14px;font-weight:600}
+.feat p{margin:0;color:var(--muted);font-size:13px}
+.feat svg{width:22px;height:22px;color:var(--accent)}
+.recent{margin-top:26px}
+.recent h2{font-size:14px;font-weight:600;margin:0 0 10px}
+.recent .row .ex{max-width:280px}
+.hint{font-size:12px;color:var(--muted)}
+.err{color:var(--warn);font-size:13px}
+
+/* running */
+.run{max-width:640px;margin:10vh auto 0;background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:28px;box-shadow:var(--shadow)}
+.run h2{margin:0;font-size:22px;letter-spacing:-.02em}
+.steps{list-style:none;padding:0;margin:18px 0 0;display:flex;flex-direction:column;gap:2px}
+.steps li{display:flex;align-items:center;gap:10px;padding:6px 4px;color:var(--ink2);font-size:13.5px}
+.steps li i{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--accent);border-top-color:transparent;flex:none;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.steps li i,.spin{animation:none!important}}
+.errbox{margin-top:16px;padding:12px 14px;border-radius:12px;background:var(--warn-soft);color:var(--ink);border:1px solid color-mix(in srgb,var(--warn) 40%,transparent)}
+.spin{display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid currentColor;border-top-color:transparent;animation:spin .8s linear infinite;vertical-align:-2px}
+
+/* results */
+.top{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);margin:0 -32px;padding:14px 32px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+@media (max-width:900px){.top{margin:0 -16px;padding:12px 16px}}
+.top h1{margin:0;font-size:18px;letter-spacing:-.02em;font-weight:620;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.top h1 small{font-weight:450;color:var(--muted);font-size:14px;margin-left:8px}
+.badge{font:500 11px var(--mono);padding:3px 8px;border-radius:6px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:22px}
+.tile{padding:14px 16px;border-radius:var(--r);background:var(--panel);border:1px solid var(--line)}
+.tile b{display:block;font-size:24px;font-weight:620;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1.15;overflow-wrap:anywhere}
+.tile span{font-size:12px;color:var(--muted)}
+.insights{margin-top:14px;border-radius:18px;padding:6px;background:linear-gradient(135deg,var(--accent-soft),transparent 60%),var(--panel);border:1px solid var(--line)}
+.insights h2{margin:12px 14px 6px;font-size:15px;font-weight:620;display:flex;align-items:center;gap:8px}
+.insight{display:grid;grid-template-columns:64px minmax(0,1fr);gap:10px;padding:10px 14px;border-top:1px solid var(--line2);font-size:13.5px;color:var(--ink2)}
+.insight:first-of-type{border-top:0}
+.insight b{color:var(--ink);font-weight:600}
+.tag{font:600 10px var(--mono);letter-spacing:.06em;height:20px;padding:0 7px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;width:max-content;white-space:nowrap}
+.tag.ok{background:var(--accent-soft);color:var(--accent)}
+.tag.warn{background:var(--warn-soft);color:var(--warn)}
+.tag.info{background:var(--info-soft);color:var(--info)}
+section.sec{padding-top:40px;scroll-margin-top:70px}
+.sech{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.sech .k{font:500 11px var(--mono);text-transform:uppercase;letter-spacing:.1em;color:var(--accent)}
+.sech h2{margin:0;font-size:24px;letter-spacing:-.03em;font-weight:630}
+.sec p.lede{color:var(--muted);max-width:90ch;margin:6px 0 18px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:1100px){.grid{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.card.wide{grid-column:1/-1}
+.card .hd{display:flex;align-items:flex-start;gap:10px;padding:14px 16px 10px;flex-wrap:wrap}
+.card .hd h3{margin:0;font-size:14.5px;font-weight:600;letter-spacing:-.01em}
+.card .hd .sub{font:11.5px var(--mono);color:var(--muted);margin-top:2px}
+.card .hd .act{margin-left:auto;display:flex;gap:4px;flex-wrap:wrap}
+.card .hd .act .vec{font:600 10.5px var(--mono);letter-spacing:.04em;padding:0 8px;height:28px}
+.card .bd{padding:0 16px 8px;min-width:0}
+.fig{margin:0 12px;border-radius:12px;background:#fff;border:1px solid var(--line2);padding:8px;overflow:hidden;position:relative;color:#13212b}
+.fig svg{display:block;width:100%;height:auto}
+.card .ft{padding:12px 16px 16px;display:flex;flex-direction:column;gap:8px;font-size:13px}
+.card .ft .how{color:var(--muted)}
+.card .ft .yours{color:var(--ink2);padding:9px 12px;border-radius:10px;background:var(--panel2);border:1px solid var(--line2)}
+.card .ft .yours b{color:var(--accent);font-weight:600}
+.card .ft .yours::before{content:"In your data";display:block;font:500 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+.card .ft .note{padding:9px 12px;border-radius:10px;background:var(--info-soft);color:var(--ink2)}
+.tbl{padding:0 16px 8px}
+.tbl .tools{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+.tbl input[type=search]{height:32px;border:1px solid var(--line);border-radius:8px;padding:0 10px;background:var(--panel2);font-size:13px;width:220px;max-width:100%}
+.tscroll{overflow:auto;max-height:460px;border:1px solid var(--line2);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums}
+th{position:sticky;top:0;background:var(--panel2);text-align:left;font:500 11px var(--mono);letter-spacing:.04em;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;cursor:pointer;user-select:none;z-index:1}
+td{padding:6px 10px;border-bottom:1px solid var(--line2);vertical-align:top}
+td.nw{white-space:nowrap}
+td.wrap{min-width:220px;max-width:440px;white-space:normal}
+tr:hover td{background:var(--panel2)}
+tr.click{cursor:pointer}
+td.gene{font-family:var(--mono);font-weight:600}
+.note{color:var(--muted);font-size:12.5px;padding:8px 16px 16px}
+.methods{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:800px){.methods{grid-template-columns:1fr}}
+.methods div{padding:14px 16px;background:var(--panel);border:1px solid var(--line);border-radius:14px}
+.methods h4{margin:0 0 4px;font-size:13.5px}
+.methods p{margin:0;color:var(--muted);font-size:13px}
+.cites{margin:12px 0 0;padding-left:18px;color:var(--muted);font-size:12.5px}
+.cites li{margin:3px 0}
+.versions{margin-top:12px;display:flex;flex-wrap:wrap;gap:6px}
+.kv{display:grid;grid-template-columns:150px minmax(0,1fr);gap:6px 14px;font-size:13.5px;padding:2px 16px 8px}
+.kv dt{color:var(--muted);font-size:12.5px}
+.kv dd{margin:0;color:var(--ink2);min-width:0;overflow-wrap:anywhere}
+@media (max-width:520px){.kv{grid-template-columns:1fr}.kv dt{margin-top:6px}}
+.clamp{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.more{all:unset;cursor:pointer;color:var(--accent);font-size:12.5px}
+.dz{margin:0;padding-left:18px}
+.dz li{margin:0 0 4px}
+.dz summary{cursor:pointer}
+.dz details[open] summary{margin-bottom:2px}
+.tip{position:fixed;z-index:80;pointer-events:none;background:var(--ink);color:var(--bg);font:12px/1.45 var(--sans);padding:6px 9px;border-radius:8px;max-width:340px;box-shadow:0 6px 20px -8px rgba(0,0,0,.5)}
+.tip b{font-weight:600}
+.legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--ink2);padding:8px 16px 0}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.grad{height:10px;border-radius:99px;width:140px;display:inline-block;vertical-align:-1px;margin:0 6px}
+
+/* viewer */
+.viewer{display:grid;grid-template-columns:minmax(0,1fr) 260px;border-top:1px solid var(--line2)}
+@media (max-width:800px){.viewer{grid-template-columns:1fr}}
+.viewer .stage{position:relative;height:500px;background:var(--panel2)}
+@media (max-width:800px){.viewer .stage{height:360px}}
+.viewer .stage .msg{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:13px;text-align:center;padding:20px}
+.viewer .panel{border-left:1px solid var(--line2);padding:14px;display:flex;flex-direction:column;gap:12px;max-height:500px;overflow:auto;font-size:13px}
+@media (max-width:800px){.viewer .panel{border-left:0;border-top:1px solid var(--line2);max-height:none}}
+.viewer .panel label{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+.vtools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:0 16px 10px}
+.resinfo{border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--panel2);font-size:12.5px;line-height:1.5}
+.resinfo b{font-size:14px}
+
+/* pdb coverage */
+.cov{padding:0 16px}
+.covrow{display:grid;grid-template-columns:150px minmax(0,1fr) 64px;gap:10px;align-items:center;padding:3px 0;border-bottom:1px solid var(--line2);font-size:12px}
+.covrow .lab{font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.covrow .lab small{color:var(--muted)}
+.covrow .bar{position:relative;height:14px;background:var(--bg2);border-radius:4px}
+.covrow .bar span{position:absolute;top:2px;bottom:2px;border-radius:3px}
+.covrow.head .bar{background:transparent;height:auto}
+.covscroll{max-height:440px;overflow:auto;border:1px solid var(--line2);border-radius:10px;padding:0 10px}
+@media (max-width:600px){.covrow{grid-template-columns:96px minmax(0,1fr) 54px}}
+
+/* chat panel */
+.chatwrap{position:fixed;top:0;right:0;bottom:0;width:min(440px,100%);background:var(--panel);border-left:1px solid var(--line);z-index:40;display:flex;flex-direction:column;box-shadow:-20px 0 40px -24px rgba(0,0,0,.35);transform:translateX(100%);transition:transform .2s ease}
+.chatwrap.open{transform:none}
+@media (prefers-reduced-motion:reduce){.chatwrap{transition:none}}
+body.chat-open main{padding-right:calc(32px + min(440px,100vw))}
+@media (max-width:1200px){body.chat-open main{padding-right:32px}}
+.chat-h{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.chat-h h3{margin:0;font-size:14px;font-weight:620;flex:1;display:flex;align-items:center;gap:8px;min-width:0}
+.chat-h .ctx{font:11px var(--mono);color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat-b{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
+.msg{max-width:100%;font-size:13.5px;line-height:1.55}
+.msg.user{align-self:flex-end;background:var(--accent-soft);color:var(--ink);padding:9px 12px;border-radius:14px 14px 4px 14px;max-width:85%}
+.msg.ai{color:var(--ink)}
+.msg.ai p{margin:0 0 8px}.msg.ai p:last-child{margin:0}
+.msg.ai code{font:12px var(--mono);background:var(--bg2);padding:1px 5px;border-radius:4px}
+.msg.ai pre{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:10px;overflow:auto;font:12px/1.5 var(--mono)}
+.msg.ai pre code{background:none;padding:0}
+.msg.ai ul,.msg.ai ol{margin:4px 0 8px;padding-left:20px}
+.msg.ai h1,.msg.ai h2,.msg.ai h3{font-size:14px;margin:8px 0 4px}
+.toolcard{border:1px solid var(--line);border-radius:10px;background:var(--panel2);font-size:12px;overflow:hidden}
+.toolcard summary{list-style:none;cursor:pointer;padding:7px 10px;display:flex;gap:8px;align-items:center;color:var(--ink2)}
+.toolcard summary::-webkit-details-marker{display:none}
+.toolcard summary i{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none}
+.toolcard summary i.run{animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.3}}
+.toolcard summary b{font:600 12px var(--mono)}
+.toolcard summary .hint{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.toolcard pre{margin:0;padding:8px 10px;border-top:1px solid var(--line2);font:11px/1.45 var(--mono);white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)}
+.chat-f{border-top:1px solid var(--line);padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.chat-f textarea{width:100%;min-height:64px;max-height:180px;resize:vertical;border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:var(--panel2);font:13.5px var(--sans);color:var(--ink)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{all:unset;cursor:pointer;font-size:12px;padding:4px 9px;border-radius:99px;border:1px solid var(--line);color:var(--ink2);background:var(--panel)}
+.chips button:hover{border-color:var(--accent);color:var(--accent)}
+.fab{position:fixed;right:20px;bottom:20px;z-index:39;height:44px;padding:0 16px;border-radius:99px;background:var(--ink);color:var(--bg);border:0;font:600 13.5px var(--sans);display:flex;align-items:center;gap:8px;cursor:pointer;box-shadow:0 10px 30px -10px rgba(0,0,0,.45)}
+.fab:hover{background:var(--accent);color:var(--accent-ink)}
+.fab svg{width:16px;height:16px}
+body.chat-open .fab{display:none}
+.modal{position:fixed;inset:0;z-index:70;display:grid;place-items:center;background:rgba(5,12,16,.5);padding:16px}
+.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;width:min(460px,100%);display:flex;flex-direction:column;gap:12px}
+.modal h3{margin:0;font-size:16px}
+.modal label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+.modal input,.modal select{height:36px;border:1px solid var(--line);border-radius:8px;padding:0 10px;background:var(--panel2);font-size:13px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;z-index:90;font-size:13px;max-width:min(560px,92vw)}
+.vflags{display:flex;flex-direction:column;gap:4px}
+.vflags div{display:flex;gap:6px;align-items:flex-start;white-space:normal}
+.pill{font:500 11px var(--mono);padding:2px 7px;border-radius:99px;white-space:nowrap}
+.pill.lp{background:color-mix(in srgb,var(--up) 16%,transparent);color:var(--up)}
+.pill.lb{background:color-mix(in srgb,var(--down) 16%,transparent);color:var(--down)}
+.pill.am{background:var(--bg2);color:var(--ink2)}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:0}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <a class="logo" href="#" id="homeLink">
+      <svg width="52" height="52" viewBox="0 0 32 32" aria-hidden="true">
+        <!-- a chain trace coloured by AlphaFold confidence: the app's gene → protein → structure in one mark -->
+        <rect x="0.5" y="0.5" width="31" height="31" rx="7.5" fill="var(--ink)"/>
+        <path d="M5.5 21.5C8 11 11.5 9 14 15.5S20 24 22.5 17 25.5 8.5 27 10" stroke="var(--muted)" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+        <circle cx="5.5" cy="21.5" r="2.1" fill="#FF7D45"/><circle cx="10.2" cy="11.6" r="2.3" fill="#65CBF3"/>
+        <circle cx="15" cy="17.4" r="2.5" fill="#0053D6"/><circle cx="20.4" cy="20.6" r="2.3" fill="#00e0cf"/>
+        <circle cx="24.4" cy="11.8" r="2.1" fill="#FFDB13"/>
+      </svg>
+      <span><b>Structure Bench</b><span class="who">created by Paul H. Kim, Ph.D.</span><small>biopython · alphafold · <span id="appVersion"></span></small></span>
+    </a>
+    <button class="btn primary" id="newBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>New lookup</button>
+    <div class="navwrap" id="navWrap" hidden><div class="navlabel">Report</div><nav class="nav" id="nav"></nav></div>
+    <div class="dlwrap" id="dlWrap" hidden><div class="navlabel">Downloads</div><div class="dl" id="dl"></div></div>
+    <div class="navwrap" id="sideRecentWrap" hidden><div class="navlabel">Recent</div><nav class="nav sr" id="sideRecent"></nav></div>
+    <div class="navwrap" id="toolsWrap"><div class="navlabel">Tools</div><nav class="nav">
+      <a href="#" id="settingsBtn" title="Settings &amp; API key"><i>⚙</i><span>Settings &amp; API key</span></a>
+      <a href="#" id="quitBtn" title="Stop the local server (saved analyses stay on disk)"><i>⏻</i><span>Quit Structure Bench</span></a>
+    </nav></div>
+    <div class="foot">
+      <button class="btn ghost sm" id="themeBtn" aria-label="Toggle theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+      <span>Runs locally · data stays on your Mac</span>
+    </div>
+  </aside>
+
+  <main>
+    <!-- HOME -->
+    <div id="home">
+      <div class="hero">
+        <canvas id="heroCanvas" aria-hidden="true"></canvas>
+        <div class="in">
+          <div>
+            <span class="eyebrow">● Biopython · AlphaFold DB · UniProt · PDB</span>
+            <h1>From gene to protein <em>to structure</em></h1>
+            <p class="byline">Structure Bench — created by <b>Paul H. Kim, Ph.D.</b></p>
+            <p class="lede">Type a gene. Structure Bench finds the protein in UniProt, fetches its AlphaFold model and every experimental structure, shows how confident each part is, and places your variants on it — with a plain-language reading of what each panel says.</p>
+            <div class="stack">
+              <span class="chip">gene symbol</span><span class="chip">UniProt accession</span><span class="chip">pLDDT · PAE</span><span class="chip">AlphaMissense</span><span class="chip">R482W · p.Arg482Trp</span><span class="chip">.pdb / .cif / .bcif</span><span class="chip">PyMOL · ChimeraX</span>
+            </div>
+          </div>
+          <div class="drop">
+            <div class="seg" role="tablist" aria-label="Input">
+              <button class="on" data-mode="gene">Gene</button><button data-mode="acc">UniProt accession</button><button data-mode="upload">Upload a structure</button>
+            </div>
+            <div id="m_gene" class="lk">
+              <label class="field">Gene symbol<input class="inp" id="geneIn" placeholder="LMNA" autocomplete="off" spellcheck="false"></label>
+              <label class="field">Organism<select class="inp" id="spSel"></select></label>
+              <label class="field" id="taxWrap" hidden style="grid-column:1/-1">NCBI taxon ID<input class="inp" id="taxIn" placeholder="e.g. 9913 (cattle)" inputmode="numeric"></label>
+            </div>
+            <div id="m_acc" hidden>
+              <label class="field">UniProt accession<input class="inp" id="accIn" placeholder="P02545" autocomplete="off" spellcheck="false"></label>
+            </div>
+            <div id="m_upload" hidden>
+              <label class="zone" id="zone" for="fileIn">
+                <span class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></span>
+                <b>Drop a structure file or click to browse</b>
+                <small>.pdb, .cif, .bcif (optionally .gz) — analysed offline, numbered as in the file</small>
+                <input type="file" id="fileIn" accept=".pdb,.cif,.mmcif,.bcif,.ent,.gz" hidden>
+              </label>
+            </div>
+            <div class="err" id="homeErr" hidden></div>
+            <div class="choices" id="choices" hidden></div>
+            <button class="btn accent" id="goBtn" style="height:42px">Look up</button>
+            <div class="examples">
+              <button class="ex" id="exLmna"><span class="k">Example · works offline</span><b>LMNA — Prelamin-A/C</b><small>AlphaFold model, PAE, AlphaMissense, with E145K, R482W, R527P and G608G mapped</small></button>
+              <button class="ex" id="exTp53"><span class="k">Example · needs internet</span><b>TP53 — p53</b><small>A protein with hundreds of PDB entries: DNA-binding domain, tetramerisation domain</small></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="feat">
+        <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18c3-9 6-9 8 0s5 9 8 0"/></svg><h3>Confidence first</h3><p>Per-residue pLDDT in the AlphaFold colours, and PAE to tell a real domain arrangement from an arbitrary one.</p></div>
+        <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg><h3>Variants in context</h3><p>Burial, contacts, domain, UniProt disease notes and AlphaMissense for every variant — with honest caveats.</p></div>
+        <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h12M3 17h8"/></svg><h3>Every PDB entry</h3><p>Coverage along the sequence, one click to load, mapped to UniProt numbering, compared to the model.</p></div>
+        <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a8 8 0 0 1-11.5 7.2L4 21l1.8-5.5A8 8 0 1 1 21 12z"/></svg><h3>Assistant &amp; scripts</h3><p>Ask Claude about the result; take PyMOL and ChimeraX scripts and a PDF report to the lab meeting.</p></div>
+      </div>
+      <div class="recent" id="recentWrap" hidden><h2>Your lookups <span class="hint" id="recentCount"></span></h2>
+        <div class="row" id="recent"></div>
+        <button class="btn sm ghost" id="recentMore" hidden style="margin-top:10px">Show all</button></div>
+    </div>
+
+    <!-- RUNNING -->
+    <div id="running" hidden>
+      <div class="run">
+        <span class="badge" id="runKind">lookup</span>
+        <h2 style="margin-top:12px" id="runTitle">Looking up…</h2>
+        <div style="color:var(--muted);margin-top:4px" id="runMsg"></div>
+        <ul class="steps" id="runSteps"></ul>
+        <div id="runErr"></div>
+      </div>
+    </div>
+
+    <!-- RESULTS -->
+    <div id="results" hidden></div>
+  </main>
+</div>
+<div class="tip" id="tip" hidden></div>
+<button class="fab" id="fab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a8 8 0 0 1-11.5 7.2L4 21l1.8-5.5A8 8 0 1 1 21 12z"/></svg>Ask Claude</button>
+<aside class="chatwrap" id="chat" aria-label="Assistant">
+  <div class="chat-h"><h3><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a8 8 0 0 1-11.5 7.2L4 21l1.8-5.5A8 8 0 1 1 21 12z"/></svg>Assistant <span class="ctx" id="chatCtx"></span></h3>
+    <button class="btn ghost sm" id="chatReset" title="New conversation">↺</button><button class="btn ghost sm" id="chatClose" aria-label="Close">✕</button></div>
+  <div class="chat-b" id="chatBody"><div class="msg ai"><p>I can look up proteins, explain the confidence and PAE plots, map variants, compare structures and write PyMOL or ChimeraX scripts. I only see what's in this app.</p></div></div>
+  <div class="chat-f">
+    <div class="chips" id="chips"></div>
+    <textarea id="chatIn" placeholder="Ask about this protein, or tell me what to map or compare…"></textarea>
+    <div class="row between"><span class="hint" id="chatHint"></span><button class="btn accent sm" id="chatSend">Send</button></div>
+  </div>
+</aside>
+
+<script src="vendor/3Dmol-min.js"></script>
+<script>
+"use strict";
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const safe=s=>String(s??"").replace(/<(?!\/?(b|i|code)>)/g,"&lt;");
+const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e};
+const store={get(k,d){try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}};
+const S={mode:"gene",item:null,R:null,res:{},viewer:null,view:null,chatBusy:false};
+function toast(m){const t=el("div","toast",esc(m));document.body.appendChild(t);setTimeout(()=>t.remove(),4200)}
+async function api(url,opts){const r=await fetch(url,opts);let j=null;try{j=await r.json()}catch{}
+ if(!r.ok)throw new Error((j&&j.detail)||`The server answered ${r.status}.`);return j}
+const post=(url,body)=>api(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body||{})});
+const fmt=(v,d=1)=>v==null||Number.isNaN(v)?"—":(+v).toFixed(d);
+const pct=v=>v==null?"—":Math.round(100*v)+" %";
+const AF=["#0053D6","#65CBF3","#FFDB13","#FF7D45"];
+const afColor=v=>v==null?"#c7ccd1":v>90?AF[0]:v>=70?AF[1]:v>=50?AF[2]:AF[3];
+const afBand=v=>v==null?"—":v>90?"very high":v>=70?"confident":v>=50?"low":"very low";
+const PAL=["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf","#aec7e8","#ffbb78","#98df8a","#ff9896","#c5b0d5","#c49c94"];
+const FTYPE={"Domain":"#0f766e","Region":"#7c8b93","Coiled coil":"#b45309","Motif":"#9333ea","Zinc finger":"#be185d","Repeat":"#2563eb","DNA binding":"#15803d","Transmembrane":"#a16207","Intramembrane":"#a16207","Signal":"#dc2626","Transit peptide":"#dc2626","Propeptide":"#64748b","Topological domain":"#94a3b8"};
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+/* theme */
+(()=>{const t=store.get("theme",null);if(t)document.documentElement.dataset.theme=t})();
+$("#themeBtn").onclick=()=>{const cur=document.documentElement.dataset.theme||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");const n=cur==="dark"?"light":"dark";document.documentElement.dataset.theme=n;store.set("theme",n);window.dispatchEvent(new Event("themechange"))};
+
+/* tooltip */
+const tip=$("#tip");
+function showTip(e,html){tip.innerHTML=html;tip.hidden=false;const w=tip.offsetWidth,h=tip.offsetHeight;let x=e.clientX+14,y=e.clientY+14;if(x+w>innerWidth-8)x=e.clientX-w-14;if(y+h>innerHeight-8)y=e.clientY-h-14;tip.style.left=Math.max(4,x)+"px";tip.style.top=Math.max(4,y)+"px"}
+function hideTip(){tip.hidden=true}
+
+/* Hero: a protein chain seen from the side, turning slowly — beads coloured the way AlphaFold colours
+   confidence, a helical middle and loose, low-confidence ends. Kept to the left: the lookup panel covers the right. */
+(function hero(){const cv=$("#heroCanvas"),ctx=cv.getContext("2d");let W,H,t0=performance.now(),raf=null;
+ const N=90,pts=[];for(let i=0;i<N;i++){const u=i/(N-1);const core=u>0.22&&u<0.78;pts.push({u,core,conf:core?(Math.abs(u-.5)<.18?92:78):(u<.1||u>.9?35:58),ph:Math.random()*6.28})}
+ function size(){const r=cv.getBoundingClientRect(),d=devicePixelRatio||1;W=r.width;H=r.height;cv.width=W*d;cv.height=H*d;ctx.setTransform(d,0,0,d,0,0)}
+ function frame(now){const t=(now-t0)/1000;ctx.clearRect(0,0,W,H);const wide=W>1000;const x0=W*0.04,x1=wide?W*0.5:W*0.96,cy=H*(wide?0.62:0.82),amp=Math.min(H*0.16,60);
+  const P=pts.map(p=>{const x=x0+(x1-x0)*p.u;let y,z;if(p.core){const a=p.u*62+t*0.9;y=cy+Math.sin(a)*amp*0.45;z=Math.cos(a)}else{y=cy+Math.sin(p.u*9+t*0.5+p.ph)*amp*0.9;z=Math.sin(p.u*5+t*0.7)}return{x,y,z,c:afColor(p.conf)}});
+  ctx.globalAlpha=0.35;ctx.strokeStyle=css("--muted");ctx.lineWidth=1.4;ctx.beginPath();P.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();
+  [...P].sort((a,b)=>a.z-b.z).forEach(p=>{ctx.globalAlpha=0.35+0.45*(p.z+1)/2;ctx.fillStyle=p.c;ctx.beginPath();ctx.arc(p.x,p.y,3.2+1.6*(p.z+1)/2,0,6.283);ctx.fill()});ctx.globalAlpha=1;
+  if(!matchMedia("(prefers-reduced-motion: reduce)").matches&&!$("#home").hidden)raf=requestAnimationFrame(frame)}
+ size();addEventListener("resize",()=>{size()});window.__heroRestart=()=>{cancelAnimationFrame(raf);size();raf=requestAnimationFrame(frame)};raf=requestAnimationFrame(frame)})();
+
+/* ---------------------------------------------------------------- home */
+const SPECIES=[["human","Human (Homo sapiens)"],["mouse","Mouse (Mus musculus)"],["rat","Rat (Rattus norvegicus)"],["zebrafish","Zebrafish (Danio rerio)"],["fly","Fly (Drosophila melanogaster)"],["worm","Worm (C. elegans)"],["yeast","Yeast (S. cerevisiae S288C)"],["ecoli","E. coli K-12"],["other","Other — type a taxon ID"]];
+$("#spSel").innerHTML=SPECIES.map(([k,l])=>`<option value="${k}">${esc(l)}</option>`).join("");
+$("#spSel").onchange=()=>{$("#taxWrap").hidden=$("#spSel").value!=="other"};
+$$(".seg[aria-label=Input] button").forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
+function setMode(m){S.mode=m;$$(".seg[aria-label=Input] button").forEach(b=>b.classList.toggle("on",b.dataset.mode===m));for(const k of["gene","acc","upload"])$("#m_"+k).hidden=k!==m;$("#goBtn").hidden=m==="upload";$("#homeErr").hidden=true;$("#choices").hidden=true}
+function homeErr(m){const e=$("#homeErr");e.textContent=m;e.hidden=!m}
+$("#goBtn").onclick=()=>{if(S.mode==="gene"){const g=$("#geneIn").value.trim();if(!g)return homeErr("Type a gene symbol, e.g. LMNA.");let sp=$("#spSel").value;if(sp==="other"){sp=$("#taxIn").value.trim();if(!/^\d+$/.test(sp))return homeErr("Type an NCBI taxon ID (digits only), e.g. 9913 for cattle.")}lookup({gene:g,species:sp})}
+ else{const a=$("#accIn").value.trim();if(!a)return homeErr("Type a UniProt accession, e.g. P02545.");lookup({accession:a})}};
+["#geneIn","#accIn","#taxIn"].forEach(s=>$(s).addEventListener("keydown",e=>{if(e.key==="Enter")$("#goBtn").click()}));
+$("#exLmna").onclick=async()=>{showRunning("LMNA example","Loading the bundled LMNA example and mapping E145K, R482W, R527P, G608G…");try{const r=await post("/api/example");await openItem(r.item)}catch(e){runError(e.message)}};
+$("#exTp53").onclick=()=>lookup({gene:"TP53",species:"human"});
+const zone=$("#zone");["dragenter","dragover"].forEach(ev=>zone.addEventListener(ev,e=>{e.preventDefault();zone.classList.add("over")}));["dragleave","drop"].forEach(ev=>zone.addEventListener(ev,e=>{e.preventDefault();zone.classList.remove("over")}));
+zone.addEventListener("drop",e=>{const f=e.dataTransfer.files[0];if(f)uploadFile(f)});$("#fileIn").onchange=e=>{const f=e.target.files[0];if(f)uploadFile(f);e.target.value=""};
+async function uploadFile(f,item){if(!item)showRunning("upload",`Reading ${f.name} — chains, solvent accessibility, secondary structure…`);
+ const fd=new FormData();fd.append("file",f);fd.append("item",item||"");
+ try{const r=await api("/api/upload",{method:"POST",body:fd});if(item){toast(`Added ${f.name} as ${r.sid}`);await refreshItem();return r}await openItem(r.item)}
+ catch(e){if(item){toast(e.message);return null}runError(e.message)}}
+
+async function lookup(q,refresh){homeErr("");$("#choices").hidden=true;
+ const label=q.accession?q.accession.toUpperCase():`${q.gene} (${q.species||"human"})`;
+ showRunning("lookup",`${label}: UniProt entry, AlphaFold model, PAE, AlphaMissense, then solvent accessibility for every residue.`,label);
+ try{const r=await post("/api/lookup",{...q,refresh:!!refresh});
+  if(r.choices){go("home");const c=$("#choices");c.hidden=false;c.innerHTML=`<div class="hint">${esc(r.message)}</div>`+r.choices.map(h=>`<button class="ex" data-acc="${esc(h.accession)}"><span class="k">${esc(h.accession)} · ${esc(h.id||"")}${h.reviewed?" · reviewed":""}</span><b>${esc(h.name)}</b><small>${esc(h.gene)} · ${esc(h.organism)} · ${h.length} aa</small></button>`).join("");
+   c.querySelectorAll("button").forEach(b=>b.onclick=()=>lookup({accession:b.dataset.acc}));return}
+  await openItem(r.item)}
+ catch(e){go("home");homeErr(e.message)}}
+
+/* ---------------------------------------------------------------- views */
+function go(view){for(const v of["home","running","results"])$("#"+v).hidden=v!==view;$("#navWrap").hidden=$("#dlWrap").hidden=view!=="results";if(view==="home"){if(!/^#(gene|uniprot)=/.test(location.hash))history.replaceState(null,"","#");renderRecent();window.__heroRestart()}window.scrollTo(0,0)}
+$("#newBtn").onclick=$("#homeLink").onclick=e=>{e.preventDefault();go("home")};
+function showRunning(kind,msg,title){go("running");$("#runKind").textContent=kind;$("#runTitle").textContent=title?`Looking up ${title}`:"Working…";$("#runMsg").textContent="";$("#runErr").innerHTML="";
+ $("#runSteps").innerHTML=`<li><i></i>${esc(msg)}</li><li style="color:var(--muted)">Usually a few seconds; the first time a protein is fetched it depends on the connection (each download times out after 20 s).</li>`}
+function runError(m){$("#runTitle").textContent="That did not work";$("#runSteps").innerHTML="";$("#runErr").innerHTML=`<div class="errbox">${esc(m)}</div><div class="row" style="margin-top:12px"><button class="btn" onclick="go('home')">Back</button></div>`}
+
+const whenLabel=t=>{const d=new Date(t),now=new Date();return d.toDateString()===now.toDateString()?d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):d.toLocaleDateString([],{month:"short",day:"numeric"})};
+let RECENT_ALL=false;
+async function renderRecent(){let rows=[];try{rows=await api("/api/items")}catch{}
+ $("#recentWrap").hidden=!rows.length;if(!rows.length)return;
+ const show=RECENT_ALL?rows:rows.slice(0,6);$("#recentCount").textContent=rows.length>6?`· ${rows.length} total`:"";$("#recentMore").hidden=rows.length<=6;$("#recentMore").textContent=RECENT_ALL?"Show fewer":`Show all ${rows.length}`;
+ $("#recent").innerHTML="";show.forEach(x=>{const s=x.summary||{};const sub=x.kind==="protein"?`${s.length||"?"} aa${s.plddt!=null?` · mean pLDDT ${fmt(s.plddt,0)}`:""} · ${s.pdb||0} PDB`:`${s.chains||"?"} chain(s) · ${s.length||"?"} residues`;
+  const b=el("button","ex",`<span class="k">${x.kind==="protein"?"protein":"uploaded structure"}</span><b>${esc(x.name)}</b><small>${esc(sub)}</small><small class="mono" style="opacity:.55">${esc(x.item)} · ${esc(whenLabel(x.t))}</small>`);b.onclick=()=>openItem(x.item);$("#recent").appendChild(b)});sideRecent(rows)}
+$("#recentMore").onclick=()=>{RECENT_ALL=!RECENT_ALL;renderRecent()};
+async function sideRecent(rows){if(!rows){try{rows=await api("/api/items?limit=6")}catch{rows=[]}}rows=rows.slice(0,5);$("#sideRecentWrap").hidden=!rows.length;
+ $("#sideRecent").innerHTML=rows.map(x=>`<a href="#item=${esc(x.item)}" data-item="${esc(x.item)}" title="${esc(x.name)}"><i>${x.kind==="protein"?"◆":"▣"}</i><span>${esc(x.name)}<small>${esc(whenLabel(x.t))}</small></span></a>`).join("");
+ $$("#sideRecent a").forEach(a=>a.onclick=e=>{e.preventDefault();openItem(a.dataset.item)})}
+
+/* ---------------------------------------------------------------- results */
+async function openItem(id){try{const R=await api(`/api/items/${id}`);S.item=id;S.R=R;S.res={};history.replaceState(null,"","#item="+id);renderItem(R);go("results");sideRecent()}catch(e){go("home");homeErr(e.message)}}
+async function refreshItem(keepView=true){if(!S.item)return;const y=scrollY;const R=await api(`/api/items/${S.item}`);S.R=R;renderItem(R,keepView);setTimeout(()=>scrollTo(0,y),0)}
+const F=p=>`/api/items/${S.item}/files/${p}`;
+async function residues(sid,chain){const k=sid+"|"+(chain||"");if(!S.res[k])S.res[k]=await api(`/api/items/${S.item}/residues/${encodeURIComponent(sid)}${chain?`?chain=${encodeURIComponent(chain)}`:""}`);return S.res[k]}
+
+function card({title,sub,body,how,yours,note,wide,actions,id}){const c=el("article","card"+(wide?" wide":""));if(id)c.id=id;
+ const hd=el("div","hd",`<div style="min-width:0"><h3>${esc(title)}</h3>${sub?`<div class="sub">${esc(sub)}</div>`:""}</div>`);const act=el("div","act");(actions||[]).forEach(a=>act.appendChild(a));hd.appendChild(act);c.appendChild(hd);
+ if(body)c.appendChild(body);const ft=el("div","ft");if(note)ft.appendChild(el("div","note",safe(note)));if(how)ft.appendChild(el("div","how",safe(how)));if(yours)ft.appendChild(el("div","yours",safe(yours)));if(ft.children.length)c.appendChild(ft);return c}
+function btn(label,cls,title,fn){const b=el("button","btn ghost sm "+(cls||""),label);if(title){b.title=title;b.setAttribute("aria-label",title)}if(fn)b.onclick=fn;return b}
+const DLI=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12M6 10l6 6 6-6M4 20h16"/></svg>`;
+function download(name,text,type){const a=el("a");a.href=URL.createObjectURL(new Blob([text],{type:type||"text/plain"}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
+function svgBtn(getSvg,name){return btn("SVG","vec","Download as SVG (vector — editable in Illustrator / Inkscape)",()=>{const s=getSvg();if(!s)return;const x=s.cloneNode(true);x.setAttribute("xmlns","http://www.w3.org/2000/svg");x.setAttribute("font-family","Helvetica, Arial, sans-serif");download(name+".svg",'<?xml version="1.0" encoding="UTF-8"?>\n'+x.outerHTML,"image/svg+xml")})}
+function sec(id,kicker,title,lede){const s=el("section","sec");s.id=id;s.innerHTML=`<div class="sech"><span class="k">${esc(kicker)}</span><h2>${esc(title)}</h2></div>${lede?`<p class="lede">${safe(lede)}</p>`:""}`;const g=el("div","grid");s.appendChild(g);return[s,g]}
+
+function renderItem(R,keep){const root=$("#results");const protein=R.kind==="protein";
+ const prevView=keep&&S.view?{...S.view}:null;
+ root.innerHTML="";S.viewer=null;
+ const top=el("div","top");top.innerHTML=`<span class="badge">${protein?"protein":"uploaded structure"}</span><h1 title="${esc(R.name)}">${esc(R.name)}<small>${esc(R.title&&R.title!==R.name?R.title:"")}${R.organism?" · "+esc(R.organism):""}</small></h1>`;
+ if(protein){const rb=btn("Refresh","","Fetch UniProt, AlphaFold, PAE and AlphaMissense again (bypasses the cache)",()=>lookup({accession:R.accession},true));top.appendChild(rb)}
+ const pdf=el("a","btn sm accent",DLI+"PDF report");pdf.href=`/api/items/${S.item}/report.pdf`;pdf.setAttribute("download","");top.appendChild(pdf);root.appendChild(top);
+ $("#chatCtx").textContent=R.name;setChips(R);
+ const tiles=el("div","tiles");tiles.innerHTML=R.tiles.map(t=>`<div class="tile"><b style="${String(t.value).length>10?"font-size:17px":""}">${esc(t.value)}</b><span>${esc(t.label)}</span></div>`).join("");root.appendChild(tiles);
+ const ins=el("div","insights");ins.id="summary";ins.innerHTML=`<h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg>What your data says</h2>`+(R.flags.length?R.flags:[{level:"ok",text:"Everything needed was available."}]).map(f=>`<div class="insight"><span class="tag ${f.level}">${{ok:"OK",warn:"CHECK",info:"NOTE"}[f.level]}</span><div>${safe(f.text)}</div></div>`).join("");root.appendChild(ins);
+ const nav=[["summary","Summary"]];
+ if(protein){const[s1,g1]=sec("protein","UniProt","Protein","The curated entry: what the protein does, where it lives, what goes wrong in disease, and every annotated feature.");uniprotCards(R,g1);root.appendChild(s1);nav.push(["protein","Protein"])}
+ const[s2,g2]=sec("structure",protein?"AlphaFold":"Structure",protein?"Predicted structure":"Your structure",protein?"How confident the model is along the sequence, which parts are placed relative to each other, and the model itself.":"The uploaded file. Features that need a UniProt accession are not available here.");
+ if(protein){g2.appendChild(trackCard(R));g2.appendChild(paeCard(R))}else{g2.appendChild(card({title:"Sequence track and PAE",note:"These need a UniProt accession and an AlphaFold DB entry, so they are not available for an uploaded file. To get them, look the protein up by gene or accession and add this file to it from the Compare section."}))}
+ g2.appendChild(viewerCard(R,prevView));root.appendChild(s2);nav.push(["structure",protein?"Predicted structure":"Structure"]);
+ if(protein){const[s3,g3]=sec("pdb","PDB","Experimental structures","Every entry UniProt cross-references, placed on the sequence. Load one to view it, map variants on it, or compare it with the model.");g3.appendChild(pdbCard(R));root.appendChild(s3);nav.push(["pdb","Experimental structures"])}
+ const[s4,g4]=sec("variants","Variants","Map variants",protein?"Type protein variants in any common notation. Each is checked against the UniProt sequence, placed on the structure you choose and described — burial, contacts, confidence, domain, UniProt annotation and AlphaMissense.":"Type protein variants numbered as in the file (e.g. R482W for residue 482 of the chosen chain).");
+ variantCards(R,g4);root.appendChild(s4);nav.push(["variants","Variants"]);
+ const[s5,g5]=sec("compare","Compare","Compare structures","Superpose two structures — the AlphaFold model and a PDB entry, two PDB entries, or your own file — and see where they differ along the sequence.");compareCards(R,g5);root.appendChild(s5);nav.push(["compare","Compare"]);
+ const m=el("section","sec");m.id="methods";nav.push(["methods","Methods"]);
+ m.innerHTML=`<div class="sech"><span class="k">Reproducibility</span><h2>Methods</h2></div><p class="lede">What was computed, with which Biopython function, and the citation for each method — ready to adapt for a methods section.</p><div class="methods">${R.methods.map(([h,p])=>`<div><h4>${esc(h)}</h4><p>${safe(p)}</p></div>`).join("")}</div>
+  <ol class="cites">${(R.citations||[]).map(c=>`<li>${esc(c)}</li>`).join("")}</ol><p class="hint" style="margin-top:8px">Data: UniProt and the AlphaFold Protein Structure Database are CC BY 4.0; PDB entries are CC0. Cite them when you use the numbers.</p>
+  <div class="versions">${Object.entries(R.versions||{}).map(([k,v])=>`<span class="chip">${esc(k)} ${esc(v)}</span>`).join("")}</div>`;root.appendChild(m);
+ $("#nav").innerHTML=nav.map(([id,l],i)=>`<a href="#${id}" data-id="${id}"><i>${i===0?"◎":i===nav.length-1?"≡":i}</i>${esc(l)}</a>`).join("");
+ $$("#nav a").forEach(a=>a.onclick=e=>{e.preventDefault();document.getElementById(a.dataset.id).scrollIntoView({behavior:"smooth"})});
+ const obs=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting)$$("#nav a").forEach(a=>a.classList.toggle("on",a.dataset.id===e.target.id))})},{rootMargin:"-30% 0px -60% 0px"});nav.forEach(([id])=>{const n=document.getElementById(id);if(n)obs.observe(n)});
+ const dls=[["PDF report",`/api/items/${S.item}/report.pdf`,"pdf"]];for(const s of Object.values(R.structures))dls.push([s.label,F(s.file),(s.file.split(".").pop())]);
+ if(R.variants){const vs=R.variants.structure;dls.push(["PyMOL script",`/api/items/${S.item}/script?program=pymol&structure=${encodeURIComponent(vs)}`,"pml"],["ChimeraX script",`/api/items/${S.item}/script?program=chimerax&structure=${encodeURIComponent(vs)}`,"cxc"])}
+ $("#dl").innerHTML=dls.map(([l,h,x])=>`<a href="${h}" download><span>${esc(l)}</span><span>${esc(x)}</span></a>`).join("");
+}
+
+/* ---------------------------------------------------------------- UniProt */
+function uniprotCards(R,g){const u=R.uniprot;
+ if(!u){g.appendChild(card({title:"UniProt",wide:true,note:"UniProt could not be reached and this entry is not in the local cache — showing the structure only. Use Refresh when you are back online."}));return}
+ const body=el("div");const dz=u.diseases.filter(d=>d.name||d.description);
+ body.innerHTML=`<dl class="kv"><dt>Accession</dt><dd><a href="https://www.uniprot.org/uniprotkb/${esc(u.accession)}/entry" target="_blank" rel="noopener">${esc(u.accession)}</a> · ${esc(u.id)} ${u.reviewed?'<span class="tag ok">reviewed</span>':'<span class="tag warn">unreviewed</span>'}</dd>
+  <dt>Protein</dt><dd>${esc(u.name)}</dd><dt>Gene</dt><dd class="mono">${esc(u.gene)}</dd><dt>Organism</dt><dd><i>${esc(u.organism)}</i>${u.common?` (${esc(u.common)})`:""} · taxon ${u.taxon}</dd><dt>Length</dt><dd>${u.length.toLocaleString()} residues${u.signal_length?` · signal peptide 1–${u.signal_length}`:""}</dd>
+  <dt>Function</dt><dd><div class="clamp" id="fnTxt">${esc((u.function||"—").replace(/\s*\(PubMed:[^)]*\)/g,""))}</div>${(u.function||"").length>380?'<button class="more" id="fnMore">Show all</button>':""}</dd>
+  <dt>Subcellular location</dt><dd>${esc(u.location.join("; ")||"—")}</dd>
+  <dt>Disease</dt><dd>${dz.length?`<ul class="dz">${dz.map(d=>`<li><details><summary>${d.name?`<b>${esc(d.name)}</b>${d.acronym?` (${esc(d.acronym)})`:""}`:"Other"}${d.mim?` · <a href="https://omim.org/entry/${esc(d.mim)}" target="_blank" rel="noopener">MIM ${esc(d.mim)}</a>`:""}</summary><span class="hint">${esc(d.description)}</span></details></li>`).join("")}</ul><span class="hint">Click a disease for UniProt's description.</span>`:"None annotated"}</dd>
+  ${R.isoforms&&R.isoforms.length?`<dt>Isoform models</dt><dd>${R.isoforms.map(i=>`<span class="chip" style="display:inline-block;margin:0 4px 4px 0">${esc(i.entry)} · ${i.length} aa · pLDDT ${fmt(i.mean_plddt,0)} <button class="btn xs ghost" data-iso="${esc(i.entry)}">Load</button></span>`).join("")}<div class="hint">Canonical isoform used everywhere else; load an isoform model to view it or compare it.</div></dd>`:""}</dl>`;
+ g.appendChild(card({title:`${u.gene||u.accession} — ${u.name}`,sub:`UniProtKB ${u.accession} · entry version ${u.version||"?"} · updated ${u.last_updated||"?"}`,body,how:R.texts.uniprot.how,yours:R.texts.uniprot.yours,wide:true}));
+ const fm=body.querySelector("#fnMore");if(fm)fm.onclick=()=>{body.querySelector("#fnTxt").classList.toggle("clamp");fm.textContent=fm.textContent==="Show all"?"Show less":"Show all"};
+ body.querySelectorAll("[data-iso]").forEach(b=>b.onclick=async()=>{b.disabled=true;b.innerHTML='<span class="spin"></span>';try{const r=await post(`/api/items/${S.item}/isoform`,{entry:b.dataset.iso});toast(`Loaded ${r.sid}`);await refreshItem();setView({sid:r.sid})}catch(e){toast(e.message);b.disabled=false;b.textContent="Load"}});
+ const groups=Object.keys(u.groups);let gsel=groups[0];
+ const rowsFor=gr=>u.groups[gr].map(f=>[f.type,f.start,f.end,f.type==="Natural variant"?`${f.ref||""}→${(f.alt||[]).join("/")||"?"}`:"",f.description]);
+ const holder=el("div");g.appendChild(holder);
+ function draw(){holder.innerHTML="";const seg=el("div","seg");groups.forEach(gr=>{const b=el("button",gr===gsel?"on":"",`${esc(gr)} <span class="hint">${u.groups[gr].length}</span>`);b.onclick=()=>{gsel=gr;draw()};seg.appendChild(b)});
+  holder.appendChild(tableCard({title:"Sequence features",sub:"UniProt, canonical numbering",columns:["Type","Start","End","Change","Description"],rows:rowsFor(gsel),csv:`${u.accession}_${gsel.replace(/\W+/g,"_")}.csv`,tools:seg,wrapCol:4,
+   onRow:r=>{if(S.viewer)focusResidue(+r[1],+r[2])}}))}
+ draw();holder.style.gridColumn="1/-1"}
+
+function tableCard({title,sub,columns,rows,csv,tools,wrapCol,onRow,note,html,how,yours}){const c=el("article","card wide");let sortCol=-1,dir=1,q="";
+ c.innerHTML=`<div class="hd"><div><h3>${esc(title)}</h3><div class="sub">${rows.length} rows${sub?" · "+esc(sub):""}</div></div><div class="act"></div></div><div class="tbl"><div class="tools"></div><div class="tscroll"><table><thead><tr>${columns.map((h,i)=>`<th data-i="${i}">${esc(h)}</th>`).join("")}</tr></thead><tbody></tbody></table></div></div>${note?`<div class="note">${safe(note)}</div>`:""}`;
+ const tl=c.querySelector(".tools");if(tools)tl.appendChild(tools);const qi=el("input");qi.type="search";qi.placeholder="Filter rows…";qi.setAttribute("aria-label","Filter "+title);tl.appendChild(qi);
+ if(csv){const b=btn(DLI+"CSV","","Download the table as CSV",()=>download(csv,[columns,...rows].map(r=>r.map(v=>{const s=String(v??"").replace(/<[^>]+>/g,"");return/[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s}).join(",")).join("\n"),"text/csv"));c.querySelector(".act").appendChild(b)}
+ const tb=c.querySelector("tbody");const num=v=>{const x=parseFloat(String(v).replace(/[,%]/g,""));return isNaN(x)?null:x};
+ function draw(){let rs=rows.map((r,i)=>[r,i]).filter(([r])=>!q||r.join(" ").toLowerCase().includes(q));if(sortCol>=0)rs=rs.slice().sort(([a],[b])=>{const x=num(a[sortCol]),y=num(b[sortCol]);return(x!=null&&y!=null?x-y:String(a[sortCol]).localeCompare(String(b[sortCol])))*dir});
+  tb.innerHTML=rs.map(([r,i])=>`<tr data-i="${i}" class="${onRow?"click":""}">${r.map((v,j)=>`<td class="${j===wrapCol?"wrap":"nw"}">${html&&html[j]?html[j](v,rows[i],i):esc(v)}</td>`).join("")}</tr>`).join("");
+  if(onRow)tb.querySelectorAll("tr").forEach(tr=>tr.onclick=()=>onRow(rows[+tr.dataset.i],+tr.dataset.i))}
+ qi.oninput=e=>{q=e.target.value.toLowerCase();draw()};c.querySelectorAll("th").forEach(th=>th.onclick=()=>{const i=+th.dataset.i;dir=sortCol===i?-dir:1;sortCol=i;draw()});draw();
+ if(how||yours){const ft=el("div","ft");if(how)ft.appendChild(el("div","how",safe(how)));if(yours)ft.appendChild(el("div","yours",safe(yours)));c.appendChild(ft)}
+ return c}
+
+/* ---------------------------------------------------------------- sequence track (SVG) */
+function packLanes(fs){const lanes=[];const out=[];for(const f of [...fs].sort((a,b)=>a.start-b.start||b.end-a.end)){let k=lanes.findIndex(e=>f.start>e);if(k<0){lanes.push(f.end);k=lanes.length-1}else lanes[k]=f.end;out.push([f,k])}return[out,lanes.length]}
+function trackCard(R){const body=el("div","fig");body.style.cursor="crosshair";const c=card({title:"Confidence, domains and variants",sub:`AlphaFold ${R.alphafold?R.alphafold.entry+" v"+R.alphafold.version:"— not available"} · UniProt features`,body,how:R.texts.track.how,yours:R.texts.track.yours,wide:true,actions:[svgBtn(()=>body.querySelector("svg"),`${R.accession}_track`)]});
+ const draw=()=>{body.innerHTML=trackSvg(R,Math.max(360,body.clientWidth-16));wireTrack(body,R)};setTimeout(draw,0);let t;new ResizeObserver(()=>{clearTimeout(t);t=setTimeout(draw,150)}).observe(body);return c}
+function trackSvg(R,W){const u=R.uniprot,af=R.alphafold,L=R.length||1;const padL=70,padR=12,iw=W-padL-padR;const X=p=>padL+(p-0.5)/L*iw,bw=Math.max(iw/L,0.6);
+ let y=10,o=[];const t=(x,y,s,a="start",sz=10,fill="#5b6b75",w=400)=>`<text x="${x}" y="${y}" font-size="${sz}" fill="${fill}" text-anchor="${a}" font-weight="${w}">${esc(s)}</text>`;
+ if(af){const h=70;o.push(t(padL-8,y+h/2+3,"pLDDT","end",10));for(let i=0;i<af.plddt.length;i++){const v=af.plddt[i];if(v==null)continue;o.push(`<rect x="${X(i+1).toFixed(2)}" y="${(y+h*(1-v/100)).toFixed(1)}" width="${bw.toFixed(2)}" height="${(h*v/100).toFixed(1)}" fill="${afColor(v)}"/>`)}
+  [50,70,90].forEach(v=>o.push(`<line x1="${padL}" x2="${padL+iw}" y1="${y+h*(1-v/100)}" y2="${y+h*(1-v/100)}" stroke="#13212b" stroke-opacity=".12" stroke-dasharray="2 3"/>`,t(padL+iw+2,y+h*(1-v/100)+3,v,"start",8,"#9aa4ab")));y+=h+10}
+ const feats=(u?u.features:[]).filter(f=>FTYPE[f.type]&&f.type!=="Region"&&f.type!=="Topological domain"),regs=(u?u.features:[]).filter(f=>f.type==="Region"||f.type==="Topological domain");
+ for(const [fs,lab] of [[feats,"domains"],[regs,"regions"]]){if(!fs.length)continue;const[pk,n]=packLanes(fs);o.push(t(padL-8,y+10,lab,"end",10));
+  pk.forEach(([f,k])=>{const x=X(f.start),w=Math.max(2,X(f.end+1)-X(f.start)),yy=y+k*16;const lbl=f.description||f.type;const room=Math.floor(w/6);
+   o.push(`<g class="tf" data-t="${esc(f.type)}" data-d="${esc(lbl)}" data-s="${f.start}" data-e="${f.end}"><rect x="${x.toFixed(1)}" y="${yy}" width="${w.toFixed(1)}" height="13" rx="3" fill="${FTYPE[f.type]||"#7c8b93"}" fill-opacity="${f.type==="Region"?.55:.9}" stroke="#fff" stroke-width=".6"/>${room>=4?`<text x="${(x+w/2).toFixed(1)}" y="${yy+9.5}" font-size="9" fill="#fff" text-anchor="middle" pointer-events="none">${esc(lbl.length>room?lbl.slice(0,room-1)+"…":lbl)}</text>`:""}</g>`)});y+=n*16+6}
+ const vs=u?u.variants:[];if(vs.length){o.push(t(padL-8,y+10,"variants","end",10));const byPos={};vs.forEach(v=>(byPos[v.start]=byPos[v.start]||[]).push(v));
+  Object.entries(byPos).forEach(([p,list])=>{const x=X(+p)+bw/2;o.push(`<g class="tv" data-p="${p}"><rect x="${(x-2).toFixed(1)}" y="${y}" width="4" height="14" fill="transparent"/><line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${y}" y2="${y+14}" stroke="#6a7b84" stroke-width="${list.some(v=>/in [A-Z]/.test(v.description))?1.3:.8}"/></g>`)});y+=20}
+ const mine=(R.variants&&R.variants.rows||[]).filter(r=>r.pos&&!r.error);if(mine.length){o.push(t(padL-8,y+10,"yours","end",10,"#c9304f"));mine.forEach(r=>{const x=X(r.pos)+bw/2;o.push(`<g class="tm" data-l="${esc(r.label)}"><path d="M${x-5},${y} L${x+5},${y} L${x},${y+9} Z" fill="#c9304f"/>${t(x,y+21,r.label,"middle",9,"#c9304f",600)}</g>`)});y+=26}
+ const step=L>2000?500:L>800?200:L>300?100:L>120?50:10;o.push(`<line x1="${padL}" x2="${padL+iw}" y1="${y+2}" y2="${y+2}" stroke="#9aa4ab"/>`);for(let p=step;p<=L;p+=step){const x=X(p)+bw/2;o.push(`<line x1="${x}" x2="${x}" y1="${y+2}" y2="${y+6}" stroke="#9aa4ab"/>`,t(x,y+17,p,"middle",9))}o.push(t(padL,y+17,1,"middle",9));
+ y+=24;const H=y;return`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="Geist, Helvetica, Arial, sans-serif"><rect width="${W}" height="${H}" fill="#fff"/>${o.join("")}<rect class="hov" x="${padL}" y="0" width="${iw}" height="${af?80:0}" fill="transparent"/></svg>`}
+function wireTrack(body,R){const svg=body.querySelector("svg");if(!svg)return;const u=R.uniprot,af=R.alphafold,L=R.length;const padL=70,padR=12;
+ const posAt=e=>{const r=svg.getBoundingClientRect();const W=+svg.getAttribute("width");const x=(e.clientX-r.left)*W/r.width;return Math.min(L,Math.max(1,Math.floor((x-padL)/(W-padL-padR)*L)+1))};
+ svg.addEventListener("mousemove",e=>{const g=e.target.closest("g");if(g&&g.classList.contains("tf")){showTip(e,`<b>${esc(g.dataset.d)}</b><br>${esc(g.dataset.t)} · ${g.dataset.s}–${g.dataset.e}`);return}
+  if(g&&g.classList.contains("tv")){const p=+g.dataset.p;const list=u.variants.filter(v=>v.start===p);showTip(e,list.slice(0,6).map(v=>`<b>${esc((v.ref||"")+p+(v.alt||[]).join("/"))}</b> ${esc(v.description.split("; dbSNP")[0])}`).join("<br>")+(list.length>6?`<br>… ${list.length-6} more`:""));return}
+  if(g&&g.classList.contains("tm")){const r=R.variants.rows.find(x=>x.label===g.dataset.l);showTip(e,`<b>${esc(r.label)}</b> · ${esc((r.flags||[]).map(f=>f.text).join(" "))}`);return}
+  if(e.target.classList.contains("hov")&&af){const p=posAt(e);const v=af.plddt[p-1];showTip(e,`<b>${esc((R.sequence||"")[p-1]||"")}${p}</b> · pLDDT ${fmt(v)} (${afBand(v)})`);return}hideTip()});
+ svg.addEventListener("mouseleave",hideTip);
+ svg.addEventListener("click",e=>{const g=e.target.closest("g");let s,en;if(g&&g.dataset.s){s=+g.dataset.s;en=+g.dataset.e}else if(g&&g.dataset.p){s=en=+g.dataset.p}else if(e.target.classList.contains("hov")){s=en=posAt(e)}if(s){focusResidue(s,en);document.getElementById("viewerCard").scrollIntoView({behavior:"smooth",block:"center"})}})}
+
+/* ---------------------------------------------------------------- PAE (canvas) */
+function paeCard(R){const wrap=el("div","fig");wrap.style.display="grid";wrap.style.placeItems="center";const cv=el("canvas");cv.style.maxWidth="100%";cv.style.cursor="crosshair";wrap.appendChild(cv);
+ const c=card({title:"Predicted aligned error (PAE)",sub:R.pae?`${R.pae.n} × ${R.pae.n} residues · 0–${fmt(R.pae.max,0)} Å`:"not available",body:R.pae?wrap:null,how:R.texts.pae.how,yours:R.texts.pae.yours||"",note:R.pae?null:"No PAE for this protein (the AlphaFold entry or its PAE file could not be fetched).",
+  actions:R.pae?[btn("PNG","vec","Download PNG",()=>{const a=el("a");a.href=cv.toDataURL("image/png");a.download=`${R.accession}_PAE.png`;a.click()})]:[]});
+ if(R.pae)api(`/api/items/${S.item}/pae`).then(P=>drawPae(cv,P,R)).catch(e=>{wrap.innerHTML=`<div class="hint" style="padding:20px">${esc(e.message)}</div>`});return c}
+function drawPae(cv,P,R){const n=P.size,N=P.n,mx=P.max||31.75;const side=Math.min(460,Math.max(260,(cv.parentElement.clientWidth||460)-20));const m={l:36,t:10,r:12,b:62};const d=devicePixelRatio||1;
+ cv.width=(side+m.l+m.r)*d;cv.height=(side+m.t+m.b)*d;cv.style.width=(side+m.l+m.r)+"px";const ctx=cv.getContext("2d");ctx.setTransform(d,0,0,d,0,0);ctx.fillStyle="#fff";ctx.fillRect(0,0,side+m.l+m.r,side+m.t+m.b);
+ const img=new ImageData(n,n);const lo=[13,59,32],hi=[255,255,255];for(let i=0;i<n*n;i++){const v=P.values[i];const f=v<0?1:Math.min(1,v/mx);img.data[4*i]=lo[0]+(hi[0]-lo[0])*f;img.data[4*i+1]=lo[1]+(hi[1]-lo[1])*f;img.data[4*i+2]=lo[2]+(hi[2]-lo[2])*f;img.data[4*i+3]=255}
+ const off=el("canvas");off.width=n;off.height=n;off.getContext("2d").putImageData(img,0,0);ctx.imageSmoothingEnabled=false;ctx.drawImage(off,m.l,m.t,side,side);
+ const sc=p=>(p-1)/N*side;const doms=(R.pae.blocks||[]);ctx.font="10px Geist, Helvetica, sans-serif";
+ doms.forEach((b,k)=>{const c=PAL[k%PAL.length];ctx.strokeStyle=c;ctx.lineWidth=1;ctx.setLineDash([3,3]);[b.start,b.end+1].forEach(p=>{ctx.beginPath();ctx.moveTo(m.l+sc(p),m.t);ctx.lineTo(m.l+sc(p),m.t+side);ctx.stroke();ctx.beginPath();ctx.moveTo(m.l,m.t+sc(p));ctx.lineTo(m.l+side,m.t+sc(p));ctx.stroke()});ctx.setLineDash([]);
+  ctx.fillStyle=c;ctx.fillRect(m.l+sc(b.start),m.t+side+3,sc(b.end+1)-sc(b.start),5);ctx.fillRect(m.l-8,m.t+sc(b.start),5,sc(b.end+1)-sc(b.start));ctx.fillStyle="#33454f";ctx.textAlign="center";const lx=m.l+(sc(b.start)+sc(b.end+1))/2;ctx.fillText(b.name.length>16?b.name.slice(0,15)+"…":b.name,lx,m.t+side+18)});
+ ctx.fillStyle="#6a7b84";ctx.textAlign="center";ctx.fillText("scored residue (x)",m.l+side/2,m.t+side+32);ctx.save();ctx.translate(12,m.t+side/2);ctx.rotate(-Math.PI/2);ctx.fillText("aligned residue (y)",0,0);ctx.restore();
+ const gx=m.l,gy=m.t+side+38,gw=Math.min(160,side*0.45);const gr=ctx.createLinearGradient(gx,0,gx+gw,0);gr.addColorStop(0,"rgb(13,59,32)");gr.addColorStop(1,"#fff");ctx.fillStyle=gr;ctx.fillRect(gx,gy,gw,8);ctx.strokeStyle="#c7ccd1";ctx.strokeRect(gx,gy,gw,8);ctx.fillStyle="#6a7b84";ctx.textAlign="left";ctx.fillText("0 Å",gx,gy+19);ctx.textAlign="right";ctx.fillText(`${Math.round(mx)} Å`,gx+gw,gy+19);ctx.textAlign="left";ctx.fillText("expected position error",gx+gw+8,gy+8);
+ const dom=p=>{const b=doms.find(b=>p>=b.start&&p<=b.end);return b?` (${b.name})`:""};
+ cv.onmousemove=e=>{const r=cv.getBoundingClientRect();const x=e.clientX-r.left-m.l,y=e.clientY-r.top-m.t;if(x<0||y<0||x>=side||y>=side)return hideTip();const i=Math.floor(y/side*n),j=Math.floor(x/side*n);const v=P.values[i*n+j];const px=Math.floor(x/side*N)+1,py=Math.floor(y/side*N)+1;
+  showTip(e,`x = ${px}${esc(dom(px))}<br>y = ${py}${esc(dom(py))}<br><b>PAE ${v<0?"—":fmt(v)} Å</b>${P.bin>1?` <span style="opacity:.7">(mean of ${P.bin}×${P.bin} residues)</span>`:""}`)};cv.onmouseleave=hideTip}
+
+/* ---------------------------------------------------------------- 3D viewer (3Dmol.js) */
+function viewerCard(R,prev){const protein=R.kind==="protein";const body=el("div");
+ const sids=Object.values(R.structures);const cmps=R.comparisons||[];
+ const opts=sids.map(s=>`<option value="s:${esc(s.sid)}">${esc(s.label)}</option>`).join("")+cmps.map((c,i)=>`<option value="c:${i}">Superposed: ${esc(c.label_b)} on ${esc(c.label_a)}</option>`).join("");
+ body.innerHTML=`<div class="vtools"><select class="inp sm" id="vSel" aria-label="Structure">${opts}</select>
+  <select class="inp sm" id="vCol" aria-label="Colour by"><option value="conf">Colour: pLDDT / B-factor</option><option value="chain">Colour: chain</option>${protein?'<option value="domain">Colour: UniProt domain</option>':""}<option value="rsa">Colour: relative SASA</option>${protein&&R.alphamissense&&R.alphamissense.available?'<option value="am">Colour: AlphaMissense (mean per residue)</option>':""}</select>
+  <div class="seg" id="vSty"><button class="on" data-s="cartoon">Cartoon</button><button data-s="stick">Stick</button><button data-s="surface">Surface</button></div>
+  <label class="hint" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="vVar" checked> variants</label></div>
+  <div class="viewer"><div class="stage" id="vStage"><div class="msg" id="vMsg">Loading the 3D viewer…</div></div><div class="panel"><div class="resinfo" id="vInfo"><span class="hint">Click a residue in the model for its details. Click a row in a table or the sequence track to jump to it.</span></div><div id="vLeg"></div><div class="hint" id="vNote"></div></div></div>`;
+ const pngB=btn("PNG","vec","Download the current view as PNG",()=>{if(!S.viewer)return;const a=el("a");a.href=S.viewer.pngURI();a.download=`${R.accession||"structure"}_view.png`;a.click()});
+ const resetB=btn("Reset view","","Zoom to the whole structure",()=>{if(S.viewer){S.viewer.zoomTo();S.viewer.render()}});
+ const c=card({title:"3D structure",sub:"3Dmol.js · click a residue",body,how:R.texts.viewer&&R.texts.viewer.how,yours:R.texts.viewer&&R.texts.viewer.yours,wide:true,actions:[resetB,pngB],id:"viewerCard"});
+ S.view=prev||{sid:(sids.find(s=>s.sid==="AF")||sids[0]||{}).sid,col:"conf",sty:"cartoon",vars:true};
+ setTimeout(()=>initViewer(R),0);return c}
+function setView(v){S.view={...S.view,...v};const R=S.R;if(!$("#vSel"))return;$("#vSel").value=S.view.cmp!=null?"c:"+S.view.cmp:"s:"+S.view.sid;loadView(R)}
+function initViewer(R){if(typeof $3Dmol==="undefined"){$("#vMsg").textContent="The 3D viewer (web/vendor/3Dmol-min.js) did not load.";return}
+ const st=$("#vStage");S.viewer=$3Dmol.createViewer(st,{backgroundColor:css("--panel2")||"white",antialias:true});
+ $("#vSel").value=S.view.cmp!=null?"c:"+S.view.cmp:"s:"+S.view.sid;$("#vCol").value=S.view.col;if(!$("#vCol").value)$("#vCol").value="conf";$$("#vSty button").forEach(b=>b.classList.toggle("on",b.dataset.s===S.view.sty));$("#vVar").checked=S.view.vars;
+ $("#vSel").onchange=e=>{const v=e.target.value;if(v.startsWith("c:"))S.view={...S.view,cmp:+v.slice(2)};else S.view={...S.view,cmp:null,sid:v.slice(2)};loadView(R)};
+ $("#vCol").onchange=e=>{S.view.col=e.target.value;styleView(R)};$$("#vSty button").forEach(b=>b.onclick=()=>{S.view.sty=b.dataset.s;$$("#vSty button").forEach(x=>x.classList.toggle("on",x===b));styleView(R)});
+ $("#vVar").onchange=e=>{S.view.vars=e.target.checked;styleView(R)};
+ window.addEventListener("themechange",()=>{if(S.viewer){S.viewer.setBackgroundColor(css("--panel2"));S.viewer.render()}},{once:true});
+ loadView(R)}
+const textCache={};
+async function fetchText(url){if(!textCache[url]){const r=await fetch(url);if(!r.ok)throw new Error(`Could not load ${url.split("/").pop()} (${r.status})`);textCache[url]=await r.text()}return textCache[url]}
+async function loadView(R){const V=S.viewer;if(!V)return;$("#vMsg")&&($("#vMsg").hidden=false,$("#vMsg").textContent="Loading structure…");V.removeAllModels();V.removeAllSurfaces();V.removeAllLabels();V.removeAllShapes();
+ try{S.models=[];if(S.view.cmp!=null){const c=R.comparisons[S.view.cmp];const A=R.structures[c.a],B=R.structures[c.b];
+   const ta=await fetchText(F(A.view_file||A.file)),tb=await fetchText(F(c.superposed_file));const ma=V.addModel(ta,fmtOf(A.view_file||A.file)),mb=V.addModel(tb,"cif");S.models=[{m:ma,meta:A,chain:c.chain_a,tint:"#0f766e"},{m:mb,meta:B,chain:c.chain_b,tint:"#c2410c"}];
+   S.doc={};S.doc[A.sid]=await residues(A.sid,c.chain_a);S.doc[B.sid]=await residues(B.sid,c.chain_b);
+   $("#vNote").innerHTML=`<span class="dot" style="background:#0f766e"></span>${esc(c.label_a)} ${esc(c.chain_a)} (reference) · <span class="dot" style="background:#c2410c"></span>${esc(c.label_b)} ${esc(c.chain_b)} (moved). Other chains are grey. Colour mode applies to the reference; the moved structure is drawn in orange.`}
+  else{const M=R.structures[S.view.sid];if(!M)throw new Error("No structure loaded.");const tx=await fetchText(F(M.view_file||M.file));const m=V.addModel(tx,fmtOf(M.view_file||M.file));S.models=[{m,meta:M,chain:M.main_chain}];S.doc={};S.doc[M.sid]=await residues(M.sid,M.main_chain);
+   const gp=(M.unresolved||[]);$("#vNote").innerHTML=`${esc(M.label)} · main chain ${esc(M.main_chain)}${M.chains.length>1?` · ${M.chains.length} protein chains`:""}${M.span&&M.kind!=="alphafold"?`<br>Chain ${esc(M.main_chain)} covers ${R.kind==="protein"?"UniProt ":""}${M.span[0]}–${M.span[1]}${gp.length?`; not resolved inside that: ${gp.slice(0,8).map(g=>g[0]===g[1]?g[0]:g[0]+"–"+g[1]).join(", ")}${gp.length>8?"…":""}`:" with no gaps"}.`:""}${M.note?"<br>"+esc(M.note):""}`}
+  $("#vMsg").hidden=true;styleView(R);V.zoomTo();V.render()}
+ catch(e){$("#vMsg").hidden=false;$("#vMsg").textContent=e.message}}
+const fmtOf=f=>/\.pdb$|\.ent$/i.test(f)?"pdb":"cif";
+function keyOf(a){return`${a.chain}:${a.resi}${a.icode&&a.icode.trim()?a.icode.trim():""}`}
+function rowIndex(sid){const d=S.doc&&S.doc[sid];if(!d)return{};if(!d._ix){d._ix={};d.rows.forEach(r=>d._ix[r.key]=r)}return d._ix}
+function domainOf(pos){const u=S.R.uniprot;if(!u||!pos)return null;const ds=u.features.filter(f=>(f.type==="Domain")&&f.start<=pos&&pos<=f.end);if(ds.length)return ds[0];const rs=u.features.filter(f=>f.type==="Region"&&f.start<=pos&&pos<=f.end).sort((a,b)=>(a.end-a.start)-(b.end-b.start));return rs[0]||null}
+function domIndex(f){const u=S.R.uniprot;const ds=u.features.filter(x=>x.type==="Domain");const k=ds.indexOf(f);return k>=0?k:ds.length+u.features.filter(x=>x.type==="Region").indexOf(f)}
+function rampRSA(v){if(v==null)return"#c7ccd1";const t=Math.max(0,Math.min(1,v));const a=[42,100,176],b=[245,245,245],c=[201,48,79];const m=t<.5?a.map((x,i)=>x+(b[i]-x)*t*2):b.map((x,i)=>x+(c[i]-x)*(t-.5)*2);return`rgb(${m.map(Math.round).join(",")})`}
+function rampAM(v){if(v==null)return"#c7ccd1";const lo=[42,100,176],mid=[235,235,235],hi=[201,48,79];const m=v<.34?lo:v>.564?hi:mid;const t=v<.34?v/.34:v>.564?(v-.564)/.436:.5;const base=v<.34?lo.map((x,i)=>x+(mid[i]-x)*t*0.7):v>.564?mid.map((x,i)=>x+(hi[i]-x)*(0.3+0.7*t)):mid;return`rgb(${base.map(Math.round).join(",")})`}
+function colorFn(entry){const R=S.R,mode=S.view.col,meta=entry.meta,ix=rowIndex(meta.sid);const am=R.alphamissense&&R.alphamissense.residue_mean;
+ const bs=(S.doc[meta.sid]||{rows:[]}).rows.map(x=>x.b).filter(x=>x!=null);const blo=bs.length?Math.min(...bs):0,bhi=bs.length?Math.max(...bs):1;
+ return a=>{if(entry.tint&&entry!==S.models[0])return a.chain===entry.chain?entry.tint:"#b8c0c6";
+  if(mode==="chain")return PAL[(a.chain.charCodeAt(0)+(a.chain.charCodeAt(1)||0))%PAL.length];
+  const r=ix[keyOf(a)];
+  if(mode==="conf"){if(meta.bkind==="plddt")return afColor(a.b);if(a.chain!==entry.chain)return"#b8c0c6";return rampRSA(bhi>blo?(a.b-blo)/(bhi-blo):0)}
+  if(!r)return"#b8c0c6";
+  if(mode==="domain"){const f=domainOf(r.pos);return f?PAL[domIndex(f)%PAL.length]:"#d7dde1"}
+  if(mode==="rsa")return rampRSA(r.rsa);
+  if(mode==="am")return rampAM(r.pos&&am?am[r.pos-1]:null);return"#b8c0c6"}}
+function styleView(R){const V=S.viewer;if(!V||!S.models.length)return;V.removeAllSurfaces();V.removeAllLabels();V.setStyle({},{});
+ S.models.forEach(en=>{const cf=colorFn(en);const sel={model:en.m};
+  if(S.view.sty==="stick")V.setStyle(sel,{stick:{radius:0.18,colorfunc:cf}});else V.setStyle(sel,{cartoon:{colorfunc:cf,thickness:0.4},...(S.view.sty==="surface"?{}:{})});
+  V.setStyle({model:en.m,hetflag:true,not:{resn:["HOH","WAT"]}},{stick:{radius:0.2,colorscheme:"greenCarbon"}});
+  if(S.view.sty==="surface")V.addSurface($3Dmol.SurfaceType.VDW,{opacity:0.88,colorfunc:cf},{model:en.m,hetflag:false});
+  V.setClickable({model:en.m},true,(atom)=>showAtom(atom,en))});
+ if(S.view.vars&&R.variants){const vr=R.variants.rows.filter(r=>r.key);const en=S.models.find(e=>e.meta.sid===R.variants.structure);if(en)vr.forEach(r=>{const[ch,num]=r.key.split(":");const s={model:en.m,chain:ch,resi:parseInt(num)};
+  V.addStyle(s,{stick:{radius:0.25,colorscheme:"magentaCarbon"}});V.addStyle({...s,atom:"CA"},{sphere:{radius:0.9,color:"#c026d3"}});V.addLabel(r.label,{backgroundColor:"#13212b",backgroundOpacity:.85,fontColor:"#fff",fontSize:11,inFront:true,showBackground:true},{...s,atom:"CA"})})}
+ legend(R);V.render()}
+function legend(R){const mode=S.view.col,L=$("#vLeg");const en=S.models[0];if(!en)return;const meta=en.meta;let h="";
+ if(mode==="conf"&&meta.bkind==="plddt")h=`<div class="hint">AlphaFold confidence (pLDDT)</div>`+[["> 90",AF[0]],["70–90",AF[1]],["50–70",AF[2]],["< 50",AF[3]]].map(([l,c])=>`<div><i class="dot" style="background:${c}"></i>${l}</div>`).join("");
+ else if(mode==="conf")h=`<div class="hint">CA B-factor of chain ${esc(en.chain)} (low → high)</div><span class="grad" style="background:linear-gradient(90deg,${rampRSA(0)},${rampRSA(.5)},${rampRSA(1)})"></span><div class="hint">Experimental B-factors: higher means more mobile or less well ordered. Not comparable to pLDDT.</div>`;
+ else if(mode==="chain")h=`<div class="hint">Each chain its own colour.</div>`;
+ else if(mode==="domain"){const u=R.uniprot;const ds=u.features.filter(f=>f.type==="Domain");h=`<div class="hint">UniProt domains (else the smallest region)</div>`+ds.map((f,k)=>`<div><i class="dot" style="background:${PAL[k%PAL.length]}"></i>${esc(f.description)} ${f.start}–${f.end}</div>`).join("")}
+ else if(mode==="rsa")h=`<div class="hint">Relative solvent accessibility (in this model)</div><div>0 % <span class="grad" style="background:linear-gradient(90deg,${rampRSA(0)},${rampRSA(.5)},${rampRSA(1)})"></span> ≥ 100 %</div>`;
+ else if(mode==="am")h=`<div class="hint">Mean AlphaMissense score over the 19 substitutions at each residue</div><div><i class="dot" style="background:${rampAM(.1)}"></i>&lt; 0.34 mostly benign</div><div><i class="dot" style="background:${rampAM(.45)}"></i>ambiguous</div><div><i class="dot" style="background:${rampAM(.9)}"></i>&gt; 0.564 mostly pathogenic</div>`;
+ L.innerHTML=h}
+function showAtom(atom,en){const R=S.R;const r=rowIndex(en.meta.sid)[keyOf(atom)];const pos=r&&r.pos;const f=pos&&R.kind==="protein"?domainOf(pos):null;
+ const af=R.alphafold&&pos?R.alphafold.plddt[pos-1]:null;const bl=en.meta.bkind==="plddt"?"pLDDT":"B-factor";
+ $("#vInfo").innerHTML=`<b>${esc(atom.resn)} ${atom.resi}${atom.icode&&atom.icode.trim()?atom.icode:""}</b> · chain ${esc(atom.chain)}<br>${pos&&R.kind==="protein"?`UniProt position ${pos}<br>`:""}${bl} ${fmt(atom.b)}${en.meta.bkind!=="plddt"&&af!=null?` · AlphaFold pLDDT ${fmt(af)}`:en.meta.bkind==="plddt"?` (${afBand(atom.b)})`:""}<br>${r?`Relative SASA ${pct(r.rsa)}${r.rsa_alone!=null&&Math.abs(r.rsa_alone-r.rsa)>0.03?` (alone ${pct(r.rsa_alone)})`:""} · ${esc({H:"helix",E:"extended/strand",C:"other"}[r.ss]||r.ss)}<br>`:(atom.hetflag?"ligand / non-polymer<br>":"")}${f?`Domain: ${esc(f.description||f.type)} ${f.start}–${f.end}`:""}<div style="margin-top:6px"><button class="btn xs" id="envBtn">Neighbours within 5 Å</button></div><div id="envOut"></div>`;
+ const b=$("#envBtn");if(b)b.onclick=async()=>{b.disabled=true;try{const x=await post(`/api/items/${S.item}/environment`,{residue:keyOf(atom),radius:5,structure:en.meta.sid});const nb=x.neighbours;
+  $("#envOut").innerHTML=`<div class="hint" style="margin-top:6px">${nb.n_total} residues within 5 Å (${nb.n_nonlocal} beyond ±2 in sequence)${nb.water?`, ${nb.water} waters`:""}.</div>`+(nb.other_chain.length?`<div><b>Other chains:</b> ${nb.other_chain.map(z=>esc(`${z.chain}:${z.resname}${z.num}`)).join(", ")}</div>`:"")+(nb.ligand.length?`<div><b>Ligands:</b> ${nb.ligand.map(z=>esc(`${z.resname} ${z.chain}${z.num}`)).join(", ")}</div>`:"")+`<div class="hint">${nb.same_chain.filter(z=>z.seq_sep>2).map(z=>esc(z.resname+z.num)).join(", ")}</div>`}catch(e){$("#envOut").textContent=e.message}}}
+function focusResidue(s,e){const V=S.viewer;if(!V||!S.models.length)return;const en=S.models[0];const d=S.doc[en.meta.sid];if(!d)return;const keys=d.rows.filter(r=>r.pos&&r.pos>=s&&r.pos<=(e||s)).map(r=>r.key);
+ if(!keys.length){toast(`Residue${e&&e!==s?"s "+s+"–"+e:" "+s} not modelled in ${en.meta.label}.`);return}const ch=keys[0].split(":")[0];const nums=keys.map(k=>parseInt(k.split(":")[1]));
+ const sel={model:en.m,chain:ch,resi:nums};V.zoomTo(sel,600);V.removeAllShapes();if(nums.length===1){V.addStyle(sel,{stick:{radius:0.22}});const at=V.selectedAtoms({...sel,atom:"CA"})[0];if(at)showAtom(at,en)}V.render()}
+
+/* ---------------------------------------------------------------- PDB coverage */
+function pdbCard(R){const u=R.uniprot;if(!u)return card({title:"Experimental structures",note:"Needs the UniProt entry (not reachable now).",wide:true});
+ const L=u.length,E=u.pdb;const METH={"X-ray":"#2563eb","EM":"#9333ea","NMR":"#15803d"};const mc=m=>METH[m]||"#7c8b93";
+ const loaded=new Set(Object.values(R.structures).filter(s=>s.pdb_id).map(s=>s.pdb_id));
+ const body=el("div","cov");let sort="pos",q="";
+ const tools=el("div","row");tools.style.marginBottom="8px";tools.innerHTML=`<input type="search" class="inp sm" placeholder="Filter (e.g. X-ray, 1IFR)" style="width:200px"><select class="inp sm" aria-label="Sort"><option value="pos">Sort by position</option><option value="res">Sort by resolution</option><option value="len">Sort by length covered</option></select><span class="hint">${Object.entries(E.reduce((a,e)=>(a[e.method]=(a[e.method]||0)+1,a),{})).map(([m,n])=>`<span class="dot" style="background:${mc(m)}"></span>${esc(m)} ${n}`).join(" &nbsp; ")}</span>`;
+ const list=el("div","covscroll");body.appendChild(tools);
+ const X=p=>((p-1)/L*100).toFixed(2)+"%",Wd=(s,e)=>((Math.min(e,L)-Math.max(s,1)+1)/L*100).toFixed(2)+"%";
+ const head=el("div","covrow head");const doms=u.features.filter(f=>f.type==="Domain");head.innerHTML=`<span class="lab hint">UniProt</span><div class="bar">${R.alphafold?`<div style="display:flex;height:6px;border-radius:3px;overflow:hidden;margin-bottom:3px">${R.alphafold.plddt.map(v=>`<span style="flex:1;background:${afColor(v)}"></span>`).join("")}</div>`:""}<div style="position:relative;height:14px">${doms.map((f,k)=>`<span title="${esc(f.description)} ${f.start}–${f.end}" style="position:absolute;left:${X(f.start)};width:${Wd(f.start,f.end)};top:0;bottom:0;border-radius:3px;background:${FTYPE.Domain};opacity:.85;color:#fff;font-size:9px;line-height:14px;text-align:center;overflow:hidden;white-space:nowrap">${esc(f.description)}</span>`).join("")}</div></div><span></span>`;
+ body.appendChild(head);body.appendChild(list);
+ function draw(){let es=E.filter(e=>!q||`${e.id} ${e.method} ${e.resolution_text}`.toLowerCase().includes(q));es=es.slice().sort(sort==="res"?(a,b)=>(a.resolution??99)-(b.resolution??99):sort==="len"?(a,b)=>b.covered-a.covered:(a,b)=>((a.span||[0])[0]-(b.span||[0])[0])||((a.resolution??99)-(b.resolution??99)));
+  list.innerHTML="";es.forEach(e=>{const r=el("div","covrow");const segs=e.segments.map(s=>`<span title="chains ${esc(s.chains.join("/"))} ${s.start}–${s.end}" style="left:${X(Math.max(1,s.start))};width:${Wd(s.start,s.end)};background:${mc(e.method)}"></span>`).join("");
+   r.innerHTML=`<span class="lab" title="${esc(e.id)} · ${esc(e.method)} ${esc(e.resolution_text)}"><a href="https://www.rcsb.org/structure/${esc(e.id)}" target="_blank" rel="noopener">${esc(e.id)}</a> <small>${esc(e.method)} ${e.resolution?e.resolution.toFixed(2)+" Å":""}</small></span><div class="bar">${segs}</div>`;
+   const b=el("button","btn xs"+(loaded.has(e.id)?" ghost":""),loaded.has(e.id)?"View":"Load");b.onclick=async()=>{if(loaded.has(e.id)){setView({sid:"PDB-"+e.id,cmp:null});document.getElementById("viewerCard").scrollIntoView({behavior:"smooth",block:"center"});return}
+    b.disabled=true;b.innerHTML='<span class="spin"></span>';try{const x=await post(`/api/items/${S.item}/pdb`,{pdb_id:e.id});toast(`Loaded ${e.id}: main chain ${x.structure.main_chain}${x.structure.partners&&x.structure.partners.length?`, next to chain(s) ${x.structure.partners.join(", ")}`:""}`);S.view={...S.view,sid:x.sid,cmp:null};await refreshItem();document.getElementById("viewerCard").scrollIntoView({behavior:"smooth",block:"center"})}catch(err){toast(err.message);b.disabled=false;b.textContent="Load"}};
+   r.appendChild(b);list.appendChild(r)});if(!es.length)list.innerHTML='<div class="hint" style="padding:10px">No entry matches.</div>'}
+ tools.querySelector("input").oninput=e=>{q=e.target.value.toLowerCase();draw()};tools.querySelector("select").onchange=e=>{sort=e.target.value;draw()};draw();
+ const getSvg=()=>{const W=900,rowH=14,top=30,H=top+E.length*rowH+30;const x=p=>160+(p-1)/L*(W-180);let o=`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="#fff"/>`;
+  doms.forEach(f=>o+=`<rect x="${x(f.start)}" y="6" width="${x(f.end+1)-x(f.start)}" height="14" fill="${FTYPE.Domain}"/><text x="${(x(f.start)+x(f.end+1))/2}" y="16" font-size="9" fill="#fff" text-anchor="middle">${esc(f.description)}</text>`);
+  E.forEach((e,i)=>{const y=top+i*rowH;o+=`<text x="4" y="${y+10}" font-size="10" fill="#13212b">${esc(e.id)} ${esc(e.method)} ${e.resolution?e.resolution.toFixed(2)+" Å":""}</text><rect x="160" y="${y+2}" width="${W-180}" height="10" fill="#eef2f4"/>`+e.segments.map(s=>`<rect x="${x(Math.max(1,s.start))}" y="${y+3}" width="${Math.max(1,x(Math.min(L,s.end)+1)-x(Math.max(1,s.start)))}" height="8" fill="${mc(e.method)}"/>`).join("")});
+  const tmp=el("div");tmp.innerHTML=o+"</svg>";return tmp.firstChild};
+ return card({title:`PDB entries (${E.length})`,sub:"coverage along the UniProt sequence",body:E.length?body:null,note:E.length?null:"UniProt lists no experimental structure for this protein.",how:R.texts.pdb.how,yours:R.texts.pdb.yours,wide:true,actions:E.length?[svgBtn(getSvg,`${u.accession}_pdb_coverage`)]:[]})}
+
+/* ---------------------------------------------------------------- variants */
+function variantCards(R,g){const protein=R.kind==="protein";const V=R.variants;const u=R.uniprot;
+ const body=el("div","bd");const sids=Object.values(R.structures);
+ body.innerHTML=`<div class="lk" style="grid-template-columns:minmax(0,1fr) 260px;align-items:start"><label class="field">Variants, one per line or comma-separated<textarea class="inp" id="varIn" placeholder="R482W&#10;p.Arg527Pro&#10;E145K&#10;G608G">${esc(V?V.text:"")}</textarea></label>
+  <div style="display:flex;flex-direction:column;gap:8px"><label class="field">Map on<select class="inp" id="varSid">${sids.map(s=>`<option value="${esc(s.sid)}" ${V&&V.structure===s.sid?"selected":""}>${esc(s.label)}</option>`).join("")}</select></label>
+   <label class="field">Chain<select class="inp" id="varCh"></select></label>
+   <button class="btn accent" id="varGo">Map variants</button>${u&&u.variants.length?`<button class="btn sm" id="varUni" title="Fill in every single-residue natural variant UniProt lists">Use UniProt natural variants (${u.variants.length})</button>`:""}
+   <span class="hint">Accepted: R482W, p.R482W, p.Arg482Trp, Arg482Trp, G608G, p.Gly608=, R482*.</span></div></div><div class="err" id="varErr" hidden style="margin-top:8px"></div>`;
+ g.appendChild(card({title:"Variants to map",body,wide:true}));
+ const chSel=body.querySelector("#varCh"),sidSel=body.querySelector("#varSid");const fillCh=()=>{const m=R.structures[sidSel.value];chSel.innerHTML=(m?m.chains:[]).filter(c=>c.mapped||!protein).map(c=>`<option ${c.chain===(V&&V.structure===m.sid?V.chain:m.main_chain)?"selected":""}>${esc(c.chain)}</option>`).join("")};fillCh();sidSel.onchange=fillCh;
+ const uniB=body.querySelector("#varUni");if(uniB)uniB.onclick=()=>{const vs=[];u.variants.forEach(v=>{if(v.start===v.end&&v.ref&&v.ref.length===1)(v.alt||[]).forEach(a=>{if(a.length===1)vs.push(`${v.ref}${v.start}${a}`)})});body.querySelector("#varIn").value=[...new Set(vs)].slice(0,200).join("\n");if(vs.length>200)toast("Only the first 200 are used — map them in batches.")};
+ body.querySelector("#varGo").onclick=async()=>{const b=body.querySelector("#varGo");const t=body.querySelector("#varIn").value;const er=body.querySelector("#varErr");er.hidden=true;if(!t.trim()){er.textContent="Type at least one variant.";er.hidden=false;return}
+  b.disabled=true;b.innerHTML='<span class="spin"></span> Mapping…';try{await post(`/api/items/${S.item}/variants`,{text:t,structure:sidSel.value,chain:chSel.value});S.view={...S.view,sid:sidSel.value,cmp:null,vars:true};await refreshItem();document.getElementById("varRes").scrollIntoView({behavior:"smooth",block:"start"})}catch(e){er.textContent=e.message;er.hidden=false;b.disabled=false;b.textContent="Map variants"}};
+ if(!V)return;
+ const bl=V.bkind==="plddt"||protein?"pLDDT":"B-factor";const pdbS=protein&&V.bkind==="bfactor";
+ const cols=["Variant","Position",protein?"AlphaFold pLDDT":bl,...(pdbS?["B-factor"]:[]),"Rel. SASA","Burial","Sec. structure","Contacts ≤ 5 Å","Domain / region","UniProt","AlphaMissense","Reading (heuristic)"];
+ const rows=V.rows.map(r=>{if(r.error)return[r.label||r.input,"",...Array(cols.length-3).fill(""),r.error];
+  const nb=r.neighbours;const cont=r.unresolved?"":nb?`${nb.n} (${nb.nonlocal} non-local)${nb.other_chain.length?` · ${nb.other_chain.length} other-chain`:""}${nb.ligand.length?` · ligand ${r.ligand_contacts}`:""}`:"—";
+  const b3=protein||V.bkind==="plddt"?r.plddt:r.bfactor;
+  return[r.label,r.num!=null&&r.num!==r.pos?`${r.pos} (${r.chain}:${r.num})`:r.pos,b3!=null?fmt(b3):"—",...(pdbS?[r.bfactor!=null?fmt(r.bfactor):"—"]:[]),r.unresolved?"not modelled":pct(r.rsa)+(r.rsa_alone!=null&&Math.abs(r.rsa_alone-r.rsa)>0.03?` (alone ${pct(r.rsa_alone)})`:""),r.unresolved?"":(r.rsa_class_alone&&r.rsa_class_alone!==r.rsa_class?`${r.rsa_class} with partners · ${r.rsa_class_alone} alone`:r.rsa_class),r.ss_word||"",cont,(r.domain||[]).slice(0,2).join("; "),(r.uniprot_known||[]).map(k=>k.description.split("; dbSNP")[0]).join(" | ")||(r.uniprot_other_at_pos&&r.uniprot_other_at_pos.length?`other changes here: ${r.uniprot_other_at_pos.join(", ")}`:"—"),r.am_score!=null?`${r.am_score.toFixed(3)} ${r.am_class}`:(r.kind==="missense"&&!V.am_available&&protein?"n/a":"—"),(r.flags||[]).map(f=>f.text).join(" ")]});
+ const n=cols.length;const html={};html[0]=(v,row,i)=>`<b class="mono">${esc(v)}</b>`;html[n-2]=(v,row,i)=>{const r=V.rows[i];return r.am_score!=null?`<span class="pill ${r.am_class==="likely pathogenic"?"lp":r.am_class==="likely benign"?"lb":"am"}">${r.am_score.toFixed(2)} ${esc(r.am_class)}</span>`:esc(v)};
+ html[2]=(v,row,i)=>{const r=V.rows[i];return r.plddt!=null&&(protein||V.bkind==="plddt")?`<span class="dot" style="background:${afColor(r.plddt)}"></span>${esc(v)}`:esc(v)};
+ html[n-1]=(v,row,i)=>{const r=V.rows[i];return`<div class="vflags">${(r.flags||[]).map(f=>`<div><span class="tag ${f.level}">${{ok:"OK",warn:"CHECK",info:"NOTE"}[f.level]}</span><span>${esc(f.text)}</span></div>`).join("")}</div>`};
+ html[n-4]=(v)=>`<span style="white-space:normal;display:block;min-width:160px">${esc(v)}</span>`;html[n-3]=(v)=>`<span style="white-space:normal;display:block;min-width:200px;max-width:320px">${esc(v)}</span>`;
+ const acts=el("div","row");const mk=(l,h,t)=>{const a=el("a","btn sm",DLI+esc(l));a.href=h;a.setAttribute("download","");if(t)a.title=t;return a};
+ const q=`structure=${encodeURIComponent(V.structure)}`;acts.append(mk("PyMOL .pml",`/api/items/${S.item}/script?program=pymol&${q}`,"Loads the structure, colours it and shows the variants as labelled sticks"),mk("ChimeraX .cxc",`/api/items/${S.item}/script?program=chimerax&${q}`),
+  mk("Structure, B = variant flag (.cif)",`/api/items/${S.item}/export?${q}&bfactor=flag&fmt=cif`,"B-factor column = 1 at the mapped variant residues, 0 elsewhere"),mk("(.pdb)",`/api/items/${S.item}/export?${q}&bfactor=flag&fmt=pdb`));
+ if(protein&&R.alphamissense&&R.alphamissense.available)acts.append(mk("Structure, B = AlphaMissense (.cif)",`/api/items/${S.item}/export?${q}&bfactor=am&fmt=cif`,"B-factor column = mean AlphaMissense score per residue (0–1)"),mk("(.pdb)",`/api/items/${S.item}/export?${q}&bfactor=am&fmt=pdb`));
+ acts.style.padding="0 0 4px";
+ const tc=tableCard({title:`Variants on ${V.structure_label} chain ${V.chain}`,sub:V.time,columns:cols,rows,csv:`${R.accession||"structure"}_variants.csv`,wrapCol:n-1,html,tools:acts,
+  onRow:(row,i)=>{const r=V.rows[i];if(r.key&&S.viewer){if(S.view.sid!==V.structure||S.view.cmp!=null){setView({sid:V.structure,cmp:null});setTimeout(()=>focusResidue(r.pos),900)}else focusResidue(r.pos);document.getElementById("viewerCard").scrollIntoView({behavior:"smooth",block:"center"})}},
+  how:V.how+(V.ss_method==="phi/psi"?" Secondary structure here is an approximation from backbone phi/psi angles (the DSSP program is not installed): ‘extended’ includes polyproline and disordered stretches, not only β-strands.":"")+(protein?" AlphaMissense: Cheng et al. 2023, Science — a prediction, available for the canonical human isoform only.":""),yours:V.yours});
+ tc.id="varRes";g.appendChild(tc)}
+
+/* ---------------------------------------------------------------- compare */
+function compareCards(R,g){const sids=Object.values(R.structures);const cmps=R.comparisons||[];const body=el("div","bd");
+ const opt=(sel)=>sids.map(s=>`<option value="${esc(s.sid)}" ${s.sid===sel?"selected":""}>${esc(s.label)}</option>`).join("");
+ const last=cmps[cmps.length-1];const defA=last?last.a:(sids[0]||{}).sid,defB=last?last.b:(sids[1]||sids[0]||{}).sid;
+ body.innerHTML=`<div class="row" style="align-items:flex-end"><label class="field" style="flex:1;min-width:180px">Reference (A)<select class="inp" id="cmpA">${opt(defA)}</select></label><label class="field" style="flex:1;min-width:180px">Moved onto it (B)<select class="inp" id="cmpB">${opt(defB)}</select></label><button class="btn accent" id="cmpGo">Compare</button></div>
+  <div class="row" style="margin-top:10px"><label class="btn sm" for="cmpFile">${DLI.replace("M12 4v12M6 10l6 6 6-6","M12 16V4M6 10l6-6 6 6")}Add your own structure file</label><input type="file" id="cmpFile" hidden accept=".pdb,.cif,.mmcif,.bcif,.ent,.gz"><span class="hint">${sids.length<2?(R.kind==="protein"?"Load a PDB entry above, or add a file, to have something to compare with.":"Add a second file to compare with."):"Structures in this item: "+sids.map(s=>esc(s.sid)).join(", ")}</span></div><div class="err" id="cmpErr" hidden style="margin-top:8px"></div>`;
+ g.appendChild(card({title:"Choose two structures",body,wide:true}));
+ body.querySelector("#cmpFile").onchange=async e=>{const f=e.target.files[0];if(!f)return;const r=await uploadFile(f,S.item);e.target.value=""};
+ body.querySelector("#cmpGo").onclick=async()=>{const a=body.querySelector("#cmpA").value,b=body.querySelector("#cmpB").value;const er=body.querySelector("#cmpErr");er.hidden=true;const bt=body.querySelector("#cmpGo");bt.disabled=true;bt.innerHTML='<span class="spin"></span> Aligning…';
+  try{const c=await post(`/api/items/${S.item}/compare`,{a,b});await refreshItem();const i=S.R.comparisons.findIndex(x=>x.key===c.key);document.getElementById("cmpRes").scrollIntoView({behavior:"smooth",block:"start"})}catch(e){er.textContent=e.message;er.hidden=false;bt.disabled=false;bt.textContent="Compare"}};
+ if(!last)return;const c=last;const fig=el("div","fig");
+ const acts=[svgBtn(()=>fig.querySelector("svg"),`compare_${c.b}_on_${c.a}`)];
+ const show=btn("Show both in viewer","","Load the reference and the superposed structure together",()=>{setView({cmp:cmps.length-1});document.getElementById("viewerCard").scrollIntoView({behavior:"smooth",block:"center"})});
+ const dl=el("a","btn ghost sm",DLI+"Superposed B (.cif)");dl.href=F(c.superposed_file);dl.setAttribute("download","");
+ const tl=el("div","tiles");tl.style.margin="0 16px 10px";tl.innerHTML=`<div class="tile"><b>${c.ce.rmsd!=null?fmt(c.ce.rmsd,2)+" Å":"—"}</b><span>CE RMSD (structural core)</span></div><div class="tile"><b>${fmt(c.rmsd_mapped,2)} Å</b><span>RMSD on ${c.n_pairs} matched residues</span></div><div class="tile"><b>${c.segments.length}</b><span>stretches deviating &gt; 3 Å</span></div>`;
+ const wrap=el("div");wrap.appendChild(tl);wrap.appendChild(fig);
+ const cc=card({title:`${c.label_b} ${c.chain_b} superposed on ${c.label_a} ${c.chain_a}`,sub:`per-residue CA deviation · ${c.numbering} numbering`,body:wrap,how:c.how,yours:c.yours,wide:true,actions:[show,dl,...acts],id:"cmpRes"});g.appendChild(cc);
+ if(cmps.length>1){const others=el("div","hint");others.style.padding="0 16px 12px";others.innerHTML="Earlier comparisons: "+cmps.slice(0,-1).map((x,i)=>`<a href="#" data-i="${i}">${esc(x.b)} on ${esc(x.a)}</a> (${x.ce.rmsd!=null?fmt(x.ce.rmsd,2):"—"} Å)`).join(" · ");others.querySelectorAll("a").forEach(a=>a.onclick=e=>{e.preventDefault();const x=cmps.splice(+a.dataset.i,1)[0];cmps.push(x);S.R.comparisons=cmps;renderItem(S.R,true);document.getElementById("cmpRes").scrollIntoView()});cc.insertBefore(others,cc.querySelector(".ft"))}
+ const draw=()=>{fig.innerHTML=devSvg(c,Math.max(360,fig.clientWidth-16));wireDev(fig,c)};setTimeout(draw,0);let t;new ResizeObserver(()=>{clearTimeout(t);t=setTimeout(draw,150)}).observe(fig)}
+function devSvg(c,W){const D=c.deviation;if(!D.length)return"";const H=230,pl=48,pr=44,pt=12,pb=40,iw=W-pl-pr,ih=H-pt-pb;const p0=Math.min(...D.map(d=>d.pos)),p1=Math.max(...D.map(d=>d.pos));const ymax=Math.max(4,Math.ceil(Math.max(...D.map(d=>d.dev))));
+ const X=p=>pl+(p-p0)/Math.max(1,p1-p0)*iw,Y=v=>pt+ih*(1-Math.min(v,ymax)/ymax);let o=[];const t=(x,y,s,a="middle",sz=10,f="#5b6b75")=>`<text x="${x}" y="${y}" font-size="${sz}" fill="${f}" text-anchor="${a}">${esc(s)}</text>`;
+ const hasP=D.some(d=>d.plddt!=null);if(hasP)D.forEach(d=>{if(d.plddt!=null)o.push(`<rect x="${X(d.pos)-iw/(p1-p0+1)/2}" y="${pt+ih+4}" width="${Math.max(1,iw/(p1-p0+1))}" height="7" fill="${afColor(d.plddt)}"/>`)});
+ o.push(`<rect x="${pl}" y="${Y(ymax)}" width="${iw}" height="${Y(3)-Y(ymax)}" fill="#c9304f" fill-opacity=".05"/><line x1="${pl}" x2="${pl+iw}" y1="${Y(3)}" y2="${Y(3)}" stroke="#c9304f" stroke-dasharray="4 3" stroke-opacity=".6"/>`,t(pl+iw+4,Y(3)+3,"3 Å","start",9,"#c9304f"));
+ for(let v=0;v<=ymax;v+=ymax>20?10:ymax>8?2:1){o.push(`<line x1="${pl-4}" x2="${pl}" y1="${Y(v)}" y2="${Y(v)}" stroke="#9aa4ab"/>`,t(pl-7,Y(v)+3,v,"end",9))}
+ let path="",prev=null;D.forEach(d=>{path+=(prev!=null&&d.pos-prev<=1?"L":"M")+X(d.pos).toFixed(1)+","+Y(d.dev).toFixed(1);prev=d.pos});o.push(`<path d="${path}" fill="none" stroke="#13212b" stroke-width="1.3"/>`);
+ D.forEach(d=>{if(d.dev>3)o.push(`<circle cx="${X(d.pos).toFixed(1)}" cy="${Y(d.dev).toFixed(1)}" r="1.8" fill="#c9304f"/>`)});
+ o.push(`<line x1="${pl}" x2="${pl}" y1="${pt}" y2="${pt+ih}" stroke="#9aa4ab"/><line x1="${pl}" x2="${pl+iw}" y1="${pt+ih}" y2="${pt+ih}" stroke="#9aa4ab"/>`);const span=p1-p0,step=span>1500?500:span>600?200:span>250?100:span>100?25:10;for(let p=Math.ceil(p0/step)*step;p<=p1;p+=step)o.push(t(X(p),pt+ih+24,p));
+ o.push(t(pl+iw/2,H-4,`residue (${c.numbering} numbering)${hasP?" · strip: AlphaFold pLDDT":""}`,"middle",10),`<text x="12" y="${pt+ih/2}" font-size="10" fill="#5b6b75" text-anchor="middle" transform="rotate(-90 12 ${pt+ih/2})">CA deviation (Å)</text>`);
+ return`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="Geist, Helvetica, Arial, sans-serif"><rect width="${W}" height="${H}" fill="#fff"/>${o.join("")}<rect class="hov" x="${pl}" y="${pt}" width="${iw}" height="${ih+12}" fill="transparent"/></svg>`}
+function wireDev(fig,c){const svg=fig.querySelector("svg");if(!svg)return;const D=c.deviation;const p0=Math.min(...D.map(d=>d.pos)),p1=Math.max(...D.map(d=>d.pos));const W=+svg.getAttribute("width"),pl=48,pr=44;
+ svg.addEventListener("mousemove",e=>{if(!e.target.classList.contains("hov"))return hideTip();const r=svg.getBoundingClientRect();const x=(e.clientX-r.left)*W/r.width;const p=Math.round(p0+(x-pl)/(W-pl-pr)*(p1-p0));let best=null;for(const d of D)if(!best||Math.abs(d.pos-p)<Math.abs(best.pos-p))best=d;if(!best)return;
+  showTip(e,`<b>${best.pos}</b> · A ${esc(best.a)} ↔ B ${esc(best.b)}<br>CA deviation <b>${fmt(best.dev,2)} Å</b>${best.plddt!=null?`<br>pLDDT ${fmt(best.plddt)} (${afBand(best.plddt)})`:""}`)});svg.addEventListener("mouseleave",hideTip)}
+
+/* ---------------------------------------------------------------- settings */
+async function openSettings(){const cur=await api("/api/settings");const m=el("div","modal");m.innerHTML=`<div class="box"><h3>Settings</h3>
+ <label>Anthropic API key <input type="password" id="st_key" placeholder="${cur.has_key?"Saved ("+esc(cur.key_hint)+") — paste to replace":"sk-ant-…"}"></label>
+ <label>Model <select id="st_model"><option selected>${esc(cur.model)}</option></select></label>
+ <div class="row"><button class="btn sm" id="st_test">Test key &amp; list models</button><span class="hint" id="st_msg"></span></div>
+ <p class="hint" style="margin:0">The key is stored only on this computer (~/.structure-bench/config.json; if none is saved there, RNAseq Bench's key is used) and only for the assistant. Get one at console.anthropic.com.</p>
+ <p class="hint" style="margin:0">Data folder: <span class="mono">${esc(cur.home)}</span></p>
+ <div class="row" style="justify-content:flex-end"><button class="btn" id="st_cancel">Cancel</button><button class="btn accent" id="st_save">Save</button></div></div>`;
+ document.body.appendChild(m);m.querySelector("#st_cancel").onclick=()=>m.remove();m.onclick=e=>{if(e.target===m)m.remove()};
+ const fill=(list,sel)=>{const se=m.querySelector("#st_model");se.innerHTML=list.map(x=>`<option ${x===sel?"selected":""}>${esc(x)}</option>`).join("");if(!list.includes(sel))se.insertAdjacentHTML("afterbegin",`<option selected>${esc(sel)}</option>`)};
+ fetch("/api/models").then(r=>r.json()).then(j=>{fill(j.models,cur.model);m.querySelector("#st_msg").textContent=j.ok?"Key works.":(cur.has_key?"Key check failed: "+j.error:"")}).catch(()=>{});
+ m.querySelector("#st_test").onclick=async()=>{const k=m.querySelector("#st_key").value.trim();const msg=m.querySelector("#st_msg");msg.textContent="Checking…";if(k){await post("/api/settings",{api_key:k});m.querySelector("#st_key").value="";m.querySelector("#st_key").placeholder="Saved — paste to replace"}
+  const j=await api("/api/models");fill(j.models,m.querySelector("#st_model").value);msg.textContent=j.ok?`Key works — ${j.models.length} models available.`:"Key check failed: "+(j.error||"no key")};
+ m.querySelector("#st_save").onclick=async()=>{const body={model:m.querySelector("#st_model").value};const k=m.querySelector("#st_key").value.trim();if(k)body.api_key=k;const r=await post("/api/settings",body);toast(r.has_key?"Saved":"Saved (no API key yet)");m.remove()}}
+$("#settingsBtn").onclick=e=>{e.preventDefault();openSettings()};
+$("#quitBtn").onclick=async e=>{e.preventDefault();if(!confirm("Stop Structure Bench? Saved lookups stay on disk."))return;await fetch("/api/quit",{method:"POST"}).catch(()=>{});document.body.innerHTML='<div style="font:15px system-ui;padding:60px;text-align:center;color:#6a7b84">Structure Bench has stopped. Double-click the app to start it again — you can close this tab.</div>'};
+
+/* ---------------------------------------------------------------- assistant */
+const CONV=Math.random().toString(36).slice(2);const chat=$("#chat");
+function openChat(){chat.classList.add("open");document.body.classList.add("chat-open");$("#chatIn").focus()}
+function closeChat(){chat.classList.remove("open");document.body.classList.remove("chat-open")}
+$("#fab").onclick=openChat;$("#chatClose").onclick=closeChat;
+$("#chatReset").onclick=async()=>{await post("/api/agent/reset",{conv:CONV,message:""});$("#chatBody").innerHTML='<div class="msg ai"><p>New conversation.</p></div>'};
+function chipTarget(R){const u=R.uniprot;if(!u)return"folded domain";const doms=u.features.filter(f=>f.type==="Domain");
+ const ig=doms.find(f=>/\bIg\b|immunoglobulin|LTD|lamin tail/i.test(f.description));if(ig)return/LTD|lamin tail|\bIg\b|immunoglobulin/i.test(ig.description)?"Ig fold":ig.description;
+ if(doms.length)return doms[doms.length-1].description;const db=u.features.find(f=>f.type==="DNA binding"||f.type==="Zinc finger");if(db)return`${db.type==="DNA binding"?"DNA-binding region":db.description} (${db.start}–${db.end})`;
+ const b=R.pae&&R.pae.blocks&&R.pae.blocks[0];return b?`residues ${b.start}–${b.end}`:"folded domain"}
+function setChips(R){const v=R&&R.variants&&R.variants.rows.find(r=>r.label&&r.kind==="missense");const c=R&&R.kind==="protein"?["Which of my variants are buried in a confident region?",`Is there an experimental structure covering the ${chipTarget(R)}?`,"Explain the PAE plot",`Write a PyMOL script showing ${v?v.label:"R482W"}`]:R?["Which residues are buried?","Summarize this structure","Which chains touch each other?","Write a PyMOL script for this structure"]:["Look up LMNA in human","What can this app do?","Explain pLDDT and PAE","Which PDB entries cover p53's DNA-binding domain?"];
+ $("#chips").innerHTML=c.map(t=>`<button>${esc(t)}</button>`).join("");$("#chips").querySelectorAll("button").forEach(b=>b.onclick=()=>{$("#chatIn").value=b.textContent;send()})}
+setChips(null);
+function md(t){let h=esc(t);h=h.replace(/```(\w*)\n([\s\S]*?)```/g,(m,l,c)=>`<pre><code>${c}</code></pre>`).replace(/`([^`\n]+)`/g,"<code>$1</code>").replace(/^### (.*)$/gm,"<h3>$1</h3>").replace(/^## (.*)$/gm,"<h2>$1</h2>").replace(/\*\*(.+?)\*\*/g,"<b>$1</b>").replace(/^\s*[-•] (.*)$/gm,"<li>$1</li>").replace(/(<li>.*<\/li>\n?)+/g,m=>`<ul>${m}</ul>`).replace(/^\d+\. (.*)$/gm,"<li>$1</li>");
+ return h.split(/\n{2,}/).map(p=>p.startsWith("<")?p:`<p>${p.replace(/\n/g,"<br>")}</p>`).join("")}
+async function send(){const t=$("#chatIn").value.trim();if(!t||S.chatBusy)return;S.chatBusy=true;$("#chatIn").value="";const body=$("#chatBody");
+ body.appendChild(el("div","msg user",esc(t)));const ai=el("div","msg ai","");body.appendChild(ai);let buf="",cur=el("div");ai.appendChild(cur);body.scrollTop=body.scrollHeight;$("#chatHint").textContent="Thinking…";let changed=false,newItem=null;
+ try{const r=await fetch("/api/agent/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({conv:CONV,message:t,item:S.item})});
+  const rd=r.body.getReader(),dec=new TextDecoder();let rest="";
+  while(true){const{value,done}=await rd.read();if(done)break;rest+=dec.decode(value,{stream:true});const parts=rest.split("\n\n");rest=parts.pop();
+   for(const p of parts){if(!p.startsWith("data: "))continue;const ev=JSON.parse(p.slice(6));
+    if(ev.type==="text"){buf+=ev.text;cur.innerHTML=md(buf)}
+    else if(ev.type==="tool"){const d=el("details","toolcard");d.innerHTML=`<summary><i class="run"></i><b>${esc(ev.name)}</b><span class="hint">${esc(JSON.stringify(ev.input)).slice(0,90)}</span></summary><pre>${esc(JSON.stringify(ev.input,null,1))}</pre>`;ai.appendChild(d);buf="";cur=el("div");ai.appendChild(cur);$("#chatHint").textContent="Running "+ev.name+"…"}
+    else if(ev.type==="tool_result"){const d=[...ai.querySelectorAll(".toolcard")].pop();if(d){d.querySelector("i").classList.remove("run");d.querySelector("pre").textContent+="\n— result —\n"+ev.text}
+     if(/map_variants|compare_structures|load_pdb_entry/.test(ev.name)&&!/^error/.test(ev.text))changed=true;
+     if(ev.name==="lookup_protein"){try{const j=JSON.parse(ev.text);if(j.item&&j.item!==S.item)newItem=j.item}catch{}}}
+    else if(ev.type==="error"){cur.innerHTML=`<p style="color:var(--warn)">${esc(ev.text)}</p>`}
+    body.scrollTop=body.scrollHeight}}}
+ catch(e){cur.innerHTML=`<p style="color:var(--warn)">${esc(e.message)}</p>`}
+ S.chatBusy=false;$("#chatHint").textContent="";
+ if(newItem){toast("Opening the protein the assistant looked up");openItem(newItem)}else if(changed&&S.item&&!$("#results").hidden){refreshItem();toast("Updated the page with the assistant's result")}}
+$("#chatSend").onclick=send;$("#chatIn").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}});
+
+/* ---------------------------------------------------------------- boot + deep links
+   #item=<id> reopens a saved lookup; #gene=LMNA&species=human and #uniprot=P02545 (used by RNAseq Bench's
+   gene dossier) run the lookup straight away. Species may be a word or an NCBI taxon ID. */
+function route(){const h=new URLSearchParams(location.hash.replace(/^#/,""));
+ if(h.get("item"))return openItem(h.get("item"));
+ if(h.get("uniprot")||h.get("accession")){const a=h.get("uniprot")||h.get("accession");setMode("acc");$("#accIn").value=a;return lookup({accession:a})}
+ if(h.get("gene")){const g=h.get("gene"),sp=(h.get("species")||h.get("organism")||"human").trim();setMode("gene");$("#geneIn").value=g;
+  if(SPECIES.some(([k])=>k===sp.toLowerCase()))$("#spSel").value=sp.toLowerCase();else{$("#spSel").value="other";$("#taxWrap").hidden=false;$("#taxIn").value=sp}
+  return lookup({gene:g,species:sp})}}
+window.addEventListener("hashchange",()=>{const h=location.hash;if(/^#(gene|uniprot|accession)=/.test(h)||(/^#item=/.test(h)&&h.slice(6)!==S.item))route()});
+renderRecent();route();
+fetch("/api/settings").then(r=>r.json()).then(s=>{const v=document.getElementById("appVersion");if(v&&s.version)v.textContent="v"+s.version}).catch(()=>{});
+</script>
+</body>
+</html>

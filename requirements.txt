@@ -1,0 +1,14 @@
+# Structure Bench — analysis + server dependencies.
+# Tested on macOS arm64 with Python 3.12 (biopython 1.88, numpy 2.5).
+biopython>=1.88           # UniProt search, AlphaFold DB, Bio.PDB (parsers, SASA, NeighborSearch, CEAligner), PairwiseAligner
+numpy>=1.26,<3
+msgpack>=1.0              # BinaryCIF (.bcif) uploads through Bio.PDB.binary_cif
+matplotlib>=3.8           # the sequence track in the PDF report
+reportlab>=4.0            # PDF report
+pillow>=10
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+anthropic>=0.40
+certifi>=2024
+pytest>=8                 # tests/ (not needed to run the app)

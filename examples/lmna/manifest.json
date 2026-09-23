@@ -1,0 +1,11 @@
+{
+ "about": "Offline seed for the LMNA (P02545) example: each key is the cache path the app would download to; the value is the bundled file used when the network is unavailable.",
+ "cache": {
+  "uniprot/search/19cf2b67753ddfb3.json": "uniprot_search_LMNA_human.json",
+  "uniprot/P02545.json": "uniprot_P02545.json",
+  "alphafold/P02545.predictions.json": "alphafold_predictions_P02545.json",
+  "alphafold/AF-P02545-F1-model_v6.cif": "AF-P02545-F1-model_v6.cif",
+  "alphafold/AF-P02545-F1-predicted_aligned_error_v6.json": "AF-P02545-F1-predicted_aligned_error_v6.json",
+  "alphafold/AF-P02545-F1-aa-substitutions.csv": "AF-P02545-F1-aa-substitutions.csv"
+ }
+}
