@@ -113,6 +113,28 @@ def test_neighbour_counts(af):
     assert big["n_total"] > nb["n_total"]
 
 
+def test_calcium_ion_is_a_ligand_not_a_residue_with_a_ca_atom():
+    """is_ligand() tells a modified amino acid that stays in the chain (MSE: a full N-CA-C backbone) from a small
+    HETATM group. A bound Ca2+ ion's PDB atom name is also 'CA' (same string as the alpha-carbon atom), so a check
+    of 'CA' in r alone calls it part of the chain instead of a ligand — hiding calcium-site contacts (EF-hands,
+    C2 domains) behind a same-chain or interface reading instead of 'near ligand Ca'."""
+    import io
+    import warnings
+
+    from Bio.PDB import PDBParser
+    pdb = ("ATOM      1  N   ALA A   1      11.104  13.207   2.100  1.00 20.00           N\n"
+           "ATOM      2  CA  ALA A   1      12.560  13.207   2.100  1.00 20.00           C\n"
+           "ATOM      3  C   ALA A   1      13.000  14.600   2.100  1.00 20.00           C\n"
+           "ATOM      4  O   ALA A   1      12.300  15.600   2.100  1.00 20.00           O\n"
+           "HETATM    5 CA    CA A 101      20.000  20.000  20.000  1.00 30.00          CA\n")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        s = PDBParser(QUIET=True).get_structure("x", io.StringIO(pdb))
+    ala, ca_ion = list(s[0]["A"])
+    assert st.is_ligand(ala) is False                  # a real residue, not a ligand
+    assert st.is_ligand(ca_ion) is True                 # the calcium ion, not part of the chain
+
+
 def test_ce_self_alignment_rmsd_zero(af):
     out = st.ce_rmsd(af[0], "A", af[0], "A")
     assert out["rmsd"] == pytest.approx(0.0, abs=1e-3)

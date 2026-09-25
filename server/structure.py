@@ -352,8 +352,12 @@ def map_sequence(query: str, ref: str, window: int = 15, min_local: float = 0.6,
 
 # ---------------------------------------------------------------- building sub-models
 def is_ligand(r) -> bool:
-    """A HETATM group that is not an amino acid (MSE and other modified residues stay part of the chain)."""
-    return r.id[0].startswith("H_") and r.get_resname() not in THREE and "CA" not in r
+    """A HETATM group that is not an amino acid (MSE and other modified residues stay part of the chain: they keep
+    a full N-CA-C backbone). Checking only for an atom named 'CA' is not enough — a bound Ca2+ ion's one and only
+    atom is also named 'CA' (the PDB atom name for the calcium ion, coinciding with the alpha-carbon atom name),
+    which called it 'part of the chain' and hid calcium-site contacts behind a same-chain or interface reading
+    instead of 'near ligand Ca'."""
+    return r.id[0].startswith("H_") and r.get_resname() not in THREE and not all(a in r for a in ("N", "CA", "C"))
 
 
 def _new_model(chains, keep_het=True):
