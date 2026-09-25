@@ -135,6 +135,33 @@ def test_calcium_ion_is_a_ligand_not_a_residue_with_a_ca_atom():
     assert st.is_ligand(ca_ion) is True                 # the calcium ion, not part of the chain
 
 
+def test_foreign_contacts_sees_a_ligand_sharing_the_copys_own_chain_letter():
+    """foreign_contacts() picks the copy of a repeated protein that binds something else (DNA, a partner, a
+    ligand). A bound ligand is very often deposited under the SAME author chain letter as the copy it sits in
+    (a metal ion or cofactor sharing chain A with the chain it belongs to, rather than getting a letter of its
+    own) — Bio.PDB then parses it into that same Chain object, so excluding every atom whose chain is one of the
+    protein's copies also excluded the ligand, and no copy could ever be preferred for binding one."""
+    import io
+    import warnings
+
+    from Bio.PDB import PDBParser
+    pdb = ("ATOM      1  N   ALA A   1      11.104  13.207   2.100  1.00 20.00           N\n"
+           "ATOM      2  CA  ALA A   1      12.560  13.207   2.100  1.00 20.00           C\n"
+           "ATOM      3  C   ALA A   1      13.000  14.600   2.100  1.00 20.00           C\n"
+           "ATOM      4  O   ALA A   1      12.300  15.600   2.100  1.00 20.00           O\n"
+           "HETATM    5 ZN    ZN A 101      13.500  15.000   2.300  1.00 30.00          ZN\n"
+           "ATOM      6  N   ALA B   1      50.104  13.207   2.100  1.00 20.00           N\n"
+           "ATOM      7  CA  ALA B   1      50.560  13.207   2.100  1.00 20.00           C\n"
+           "ATOM      8  C   ALA B   1      51.000  14.600   2.100  1.00 20.00           C\n"
+           "ATOM      9  O   ALA B   1      51.300  15.600   2.100  1.00 20.00           O\n")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        s = PDBParser(QUIET=True).get_structure("x", io.StringIO(pdb))
+    m = s[0]
+    assert st.foreign_contacts(m, "A", {"A", "B"}, cutoff=3.0) == 1     # sees its own zinc
+    assert st.foreign_contacts(m, "B", {"A", "B"}, cutoff=3.0) == 0     # not bound to anything
+
+
 def test_ce_self_alignment_rmsd_zero(af):
     out = st.ce_rmsd(af[0], "A", af[0], "A")
     assert out["rmsd"] == pytest.approx(0.0, abs=1e-3)
