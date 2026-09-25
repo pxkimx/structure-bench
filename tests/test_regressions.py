@@ -117,6 +117,25 @@ def test_mapping_places_a_residue_before_a_gap_by_its_number():
     assert m["pos"] == nums
 
 
+# ---------------------------------------------------------------- UniProt PDB cross-references
+def test_pdb_coverage_does_not_double_count_repeated_chain_ranges():
+    """UniProt's 'Chains' property lists each chain's range separately when they are not identical enough to be
+    joined with '/' (LMNA 6YSH: 'A=25-70, B=26-70', both chains being the same 46-residue stretch of the protein).
+    'covered' must be the union of UniProt positions the entry has anything to say about, not the sum of the
+    per-chain ranges — otherwise a homodimer resolved once looks like it covers twice as much sequence as it does,
+    which throws off 'best entry by coverage' and the 'entries spanning >= 50 residues' reading."""
+    d = {"primaryAccession": "X00000", "uniProtkbId": "X_HUMAN",
+         "proteinDescription": {"recommendedName": {"fullName": {"value": "Test protein"}}},
+         "genes": [{"geneName": {"value": "TEST"}}], "organism": {"scientificName": "Homo sapiens", "taxonId": 9606},
+         "sequence": {"value": "A" * 300}, "entryType": "UniProtKB reviewed (Swiss-Prot)",
+         "comments": [], "features": [],
+         "uniProtKBCrossReferences": [{"database": "PDB", "id": "9XXX", "properties": [
+             {"key": "Method", "value": "X-ray"}, {"key": "Resolution", "value": "2.00 A"},
+             {"key": "Chains", "value": "A=25-70, B=26-70"}]}]}
+    e = up.parse_entry(d)["pdb"][0]
+    assert e["covered"] == 46, e["covered"]                  # union of 25-70 and 26-70, not 46 + 45
+
+
 # ---------------------------------------------------------------- comparison
 def test_core_superposition_is_not_dragged_by_a_moved_tail():
     s1, _ = st.load(MODEL, "a")
