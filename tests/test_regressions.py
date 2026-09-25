@@ -206,6 +206,46 @@ def test_structure_residue_differing_from_uniprot_is_flagged():
 
 
 # ---------------------------------------------------------------- reports
+def test_variant_table_shows_the_crystal_b_factor_not_the_alphafold_reference(tmp_path, monkeypatch):
+    """A protein item's variant table must describe the structure it was actually mapped on. Mapping on a PDB
+    entry (bkind 'bfactor') gives every row both 'plddt' (the AlphaFold model's value at that position, kept only
+    for reference — see core.map_variants) and 'bfactor' (this structure's own crystallographic B-factor). The
+    column must show and label the one that matches the structure being described, the same way variants_png's
+    y-axis label already does ('pLDDT' only when V['bkind'] == 'plddt') — not always 'pLDDT' for a protein item
+    regardless of which structure is shown, which silently dropped the crystal B-factor from the report."""
+    import base64
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (4, 4), "white").save(buf, "PNG")
+    snap_url = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+    row = {"input": "R482W", "label": "R482W", "pos": 482, "kind": "missense", "chain": "A", "num": 482,
+           "unresolved": False, "key": "A:482", "rsa": 0.1, "rsa_class": "buried", "ss_word": "helix-like",
+           "domain": [], "am_score": None, "am_class": None, "uniprot_known": [], "uniprot_other_at_pos": [],
+           "neighbours": {"n": 3, "nonlocal": 1, "residues": [], "other_chain": [], "ligand": [], "water": 0},
+           "change": "", "flags": [], "plddt": 87.0, "bfactor": 45.0}    # deliberately distinct, recognisable values
+    V = {"structure": "PDB-1IFR", "structure_label": "PDB 1IFR", "chain": "A", "bkind": "bfactor",
+         "how": "", "yours": "", "ss_method": "dssp", "summary": {"n": 1}, "rows": [row]}
+    res = {"kind": "protein", "length": 664, "variants": V, "structures": {}}
+
+    doc = report.Doc(tmp_path, 500.0)
+    captured = {}
+    orig_table = report.Doc.table
+
+    def fake_table(self, title, columns, rows_, widths, **kw):
+        if title == "Summary table":
+            captured["columns"], captured["rows"] = columns, rows_
+        return orig_table(self, title, columns, rows_, widths, **kw)
+
+    monkeypatch.setattr(report.Doc, "table", fake_table)
+    report.variant_section(doc, res, {"variants": snap_url})
+    assert captured["columns"][2] == "B-factor", captured["columns"]        # not "pLDDT": this is a PDB entry
+    assert captured["rows"][0][2] == "45", captured["rows"][0]             # the crystal B-factor, not the AF reference 87
+
+
 def test_report_file_name_format():
     assert core.report_filename({"kind": "protein", "created": "2026-09-23 10:11", "uniprot": {"gene": "LMNA"},
                                  "accession": "P02545"}) == "2026-09-23_StructureBench-LMNA_report.pdf"
