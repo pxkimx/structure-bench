@@ -890,7 +890,7 @@ def comparison_section(doc: Doc, res: dict, snaps: dict | None):
                 log_exc("report superposition")
         if c.get("segments"):
             doc.table("", ["From", "To", "Residues", "Max deviation (Å)"],
-                      [[str(s_["start"]), str(s_["end"]), str(s_["end"] - s_["start"] + 1), _fmt(s_.get("max"), 1)]
+                      [[str(s_["start"]), str(s_["end"]), str(s_["end"] - s_["start"] + 1), _fmt(s_.get("max_dev"), 1)]
                        for s_ in c["segments"]], (0.2, 0.2, 0.2, 0.4),
                       how="Stretches of at least a few consecutive residues deviating by more than 3 Å.")
 

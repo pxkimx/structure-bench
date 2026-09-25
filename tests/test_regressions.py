@@ -246,6 +246,31 @@ def test_variant_table_shows_the_crystal_b_factor_not_the_alphafold_reference(tm
     assert captured["rows"][0][2] == "45", captured["rows"][0]             # the crystal B-factor, not the AF reference 87
 
 
+def test_comparison_table_shows_the_computed_max_deviation(tmp_path, monkeypatch):
+    """core.compare_structures() stores each deviating stretch's peak CA distance as 'max_dev' (see
+    core.compare_structures and _compare_yours, which reads the same key). The report's segments table read
+    s_.get('max') instead — a key that belongs to a different dict entirely (the PAE display's own value range,
+    core._add_pae's 'max') — so every row of the 'Max deviation (Å)' column was blank ('—') no matter how large
+    the real deviation was."""
+    c = {"key": "AF:A|PDB-1IFR:A", "a": "AF", "b": "PDB-1IFR", "chain_a": "A", "chain_b": "A",
+         "label_a": "AlphaFold", "label_b": "PDB 1IFR", "ce": {"rmsd": 1.2}, "rmsd_core": 0.8, "rmsd_mapped": 1.5,
+         "n_core": 50, "n_pairs": 60, "deviation": [], "how": "", "yours": "",
+         "segments": [{"start": 480, "end": 485, "n": 6, "max_dev": 7.23, "mean_plddt": 80.0, "terminus": False}]}
+    res = {"comparisons": [c], "structures": {}}
+    doc = report.Doc(tmp_path, 500.0)
+    captured = {}
+    orig_table = report.Doc.table
+
+    def fake_table(self, title, columns, rows_, widths, **kw):
+        if columns and columns[-1] == "Max deviation (Å)":
+            captured["rows"] = rows_
+        return orig_table(self, title, columns, rows_, widths, **kw)
+
+    monkeypatch.setattr(report.Doc, "table", fake_table)
+    report.comparison_section(doc, res, None)
+    assert captured["rows"][0][-1] == "7.2", captured["rows"]              # not "—"
+
+
 def test_report_file_name_format():
     assert core.report_filename({"kind": "protein", "created": "2026-09-23 10:11", "uniprot": {"gene": "LMNA"},
                                  "accession": "P02545"}) == "2026-09-23_StructureBench-LMNA_report.pdf"
