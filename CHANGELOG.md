@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.1.4 — 2026-09-25
+Found by a code review, not a specific look-up going wrong — each of these is a real gap, but you would only have
+noticed it on the right kind of entry (a homodimer, a bound metal, a crystal structure, a stretched comparison).
+- **PDB entries with per-chain residue ranges looked like they covered more of the protein than they do.** UniProt
+  lists each chain's span separately when they are not identical enough to combine (LMNA's 6YSH: "A=25-70,
+  B=26-70", both chains being the same 46-residue stretch) — the app added the two spans together instead of
+  taking their overlap, so that entry was said to cover 91 residues instead of 46. This number decides which
+  entries the "best entry covering ≥ 50 residues" reading names and which ones a protein with more than 60 PDB
+  entries actually gets drawn from — a homodimer or complex resolved once could unfairly beat a genuinely larger
+  entry. Fixed to take the true union of the ranges.
+- **A calcium ion bound to a chain was read as part of the chain, not a ligand.** The check for "this HETATM group
+  is really part of the protein" (so a selenomethionine or another modified residue is not mistaken for a small
+  molecule) looked for an atom named "CA" — the same string as a calcium ion's own PDB atom name. So a bound Ca2+
+  (EF-hand loops, C2 domains, and any other calcium site) was never counted as a ligand: a variant near one showed
+  a same-chain contact at a meaningless residue distance, or an "interface" with a phantom partner chain, instead
+  of "near ligand Ca". Fixed to require the modified residue's full backbone, not just one atom with that name.
+- **A ligand did not count towards picking which copy of a repeated protein to show.** When an entry holds several
+  copies of your protein, the app prefers showing the one actually doing something — bound to DNA, a partner, or a
+  ligand. A bound ligand is very often deposited under the same chain letter as the copy it belongs to (a metal or
+  a cofactor sharing chain A with the chain it sits in), and that letter was being excluded outright as "just
+  another copy of the protein", so the ligand became invisible to this check for every copy, not only its own.
+  Fixed so a ligand still counts, whichever chain letter it was given.
+- **The PDF report's variant table showed AlphaFold's confidence instead of the crystal's B-factor.** Mapping
+  variants on a loaded PDB entry (rather than the AlphaFold model) computes that entry's own crystallographic
+  B-factor for each variant — but the report's table always labelled the column "pLDDT" and filled it with the
+  AlphaFold model's value at that position instead, for any protein look-up, regardless of which structure was
+  actually shown. The chart right above it, on the same page, already got this right. Fixed to show the number
+  that matches the structure being described.
+- **The PDF report's "Max deviation" column, in a structure comparison, was always blank.** It was reading the
+  peak per-residue distance under the wrong name; the value was computed correctly all along; only that one column
+  in the PDF never showed it.
+
 ## 0.1.3 — 2026-09-23
 - **The PDF report button could fail outright.** The page is read from disk on every request, but the server's code is
   loaded once when it starts — so updating or rebuilding the app while it is running leaves a new page talking to an
