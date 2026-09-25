@@ -737,7 +737,6 @@ def variant_section(doc: Doc, res: dict, snaps: dict | None):
     V = res.get("variants")
     if not V:
         return
-    protein = res["kind"] == "protein"
     doc.section("Variants", f"Variants on {V['structure_label']} chain {V['chain']}",
                 "Each variant is checked against the reference sequence, placed on the structure and described.")
     how = V.get("how", "")
@@ -783,7 +782,9 @@ def variant_section(doc: Doc, res: dict, snaps: dict | None):
                             "viewer.", sub=V["structure_label"])
         except Exception:  # noqa: BLE001
             log_exc("report variant trace")
-    bcol = "pLDDT" if V.get("bkind") == "plddt" or protein else "B-factor"
+    # which column matches the structure the variants are actually mapped on (variants_png's y-axis label uses the
+    # same test) — 'protein' must not force 'pLDDT' here, or a crystal structure's own B-factor never gets shown
+    bcol = "pLDDT" if V.get("bkind") == "plddt" else "B-factor"
     rows = []
     for r in V["rows"]:
         if r.get("error"):
@@ -889,7 +890,7 @@ def comparison_section(doc: Doc, res: dict, snaps: dict | None):
                 log_exc("report superposition")
         if c.get("segments"):
             doc.table("", ["From", "To", "Residues", "Max deviation (Å)"],
-                      [[str(s_["start"]), str(s_["end"]), str(s_["end"] - s_["start"] + 1), _fmt(s_.get("max"), 1)]
+                      [[str(s_["start"]), str(s_["end"]), str(s_["end"] - s_["start"] + 1), _fmt(s_.get("max_dev"), 1)]
                        for s_ in c["segments"]], (0.2, 0.2, 0.2, 0.4),
                       how="Stretches of at least a few consecutive residues deviating by more than 3 Å.")
 

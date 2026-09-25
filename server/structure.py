@@ -186,10 +186,18 @@ def short_name(n: str) -> str:
 
 
 def foreign_contacts(model, chain_id: str, copies: set, cutoff: float = 4.5) -> int:
-    """Heavy atoms of other molecules (not copies of this protein, not water) within `cutoff` Å of the chain."""
+    """Heavy atoms of other molecules (not copies of this protein, not water) within `cutoff` Å of the chain.
+
+    A ligand bound to one copy is very often deposited under that copy's own author chain letter (a heme or a
+    metal ion sharing chain A with the globin chain it sits in, rather than getting a letter of its own) — so
+    excluding every atom whose chain is one of the protein's copies would also exclude that ligand, and no copy
+    could ever be preferred for binding one. Only atoms that are this protein's own residues (not a ligand) are
+    excluded when they belong to a copy; a ligand counts as foreign whichever chain letter it was given.
+    """
     from Bio.PDB import NeighborSearch
-    other = [a for a in model.get_atoms() if a.get_parent().get_parent().id not in copies | {chain_id}
-             and a.get_parent().get_resname() not in WATER and (a.element or "").upper() not in ("H", "D")]
+    other = [a for a in model.get_atoms() if a.get_parent().get_resname() not in WATER
+             and (a.element or "").upper() not in ("H", "D")
+             and (is_ligand(a.get_parent()) or a.get_parent().get_parent().id not in copies | {chain_id})]
     if not other:
         return 0
     ns = NeighborSearch(other)
@@ -352,8 +360,12 @@ def map_sequence(query: str, ref: str, window: int = 15, min_local: float = 0.6,
 
 # ---------------------------------------------------------------- building sub-models
 def is_ligand(r) -> bool:
-    """A HETATM group that is not an amino acid (MSE and other modified residues stay part of the chain)."""
-    return r.id[0].startswith("H_") and r.get_resname() not in THREE and "CA" not in r
+    """A HETATM group that is not an amino acid (MSE and other modified residues stay part of the chain: they keep
+    a full N-CA-C backbone). Checking only for an atom named 'CA' is not enough — a bound Ca2+ ion's one and only
+    atom is also named 'CA' (the PDB atom name for the calcium ion, coinciding with the alpha-carbon atom name),
+    which called it 'part of the chain' and hid calcium-site contacts behind a same-chain or interface reading
+    instead of 'near ligand Ca'."""
+    return r.id[0].startswith("H_") and r.get_resname() not in THREE and not all(a in r for a in ("N", "CA", "C"))
 
 
 def _new_model(chains, keep_het=True):

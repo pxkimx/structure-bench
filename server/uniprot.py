@@ -104,6 +104,22 @@ TRACK_TYPES = ["Domain", "Region", "Coiled coil", "Motif", "Zinc finger", "Repea
                "Intramembrane", "Signal", "Transit peptide", "Propeptide"]
 
 
+def _union_len(segs: list[dict]) -> int:
+    """Residues covered by the union of a PDB entry's (start, end) ranges. UniProt's 'Chains' property lists each
+    chain's range separately when they are not identical enough to join with '/' (LMNA 6YSH: 'A=25-70, B=26-70',
+    both chains covering the same 46-residue stretch) — summing the per-chain ranges would count that stretch
+    twice, making a homodimer resolved once look like it covers twice as much sequence as it does."""
+    if not segs:
+        return 0
+    merged = []
+    for s, e in sorted({(x["start"], x["end"]) for x in segs}):
+        if merged and s <= merged[-1][1] + 1:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], e))
+        else:
+            merged.append((s, e))
+    return sum(e - s + 1 for s, e in merged)
+
+
 def _loc(f):
     s = f.get("location", {}).get("start", {}).get("value")
     e = f.get("location", {}).get("end", {}).get("value")
@@ -182,7 +198,7 @@ def parse_entry(d: dict) -> dict:
             m = re.match(r"^([\w/]+)=(-?\d+)-(-?\d+)$", part)
             if m:
                 segs.append({"chains": m.group(1).split("/"), "start": int(m.group(2)), "end": int(m.group(3))})
-        cov = sum(s["end"] - s["start"] + 1 for s in {(tuple(s["chains"]), s["start"], s["end"]): s for s in segs}.values()) if segs else 0
+        cov = _union_len(segs)
         pdb.append({"id": x["id"], "method": props.get("Method", ""), "resolution": resv, "resolution_text": res,
                     "segments": segs, "span": [min(s["start"] for s in segs), max(s["end"] for s in segs)] if segs else None,
                     "covered": cov})
