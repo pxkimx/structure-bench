@@ -474,7 +474,7 @@ async function lookup(q,refresh){homeErr("");$("#choices").hidden=true;
  try{const r=await post("/api/lookup",{...q,refresh:!!refresh});
   if(r.choices){go("home");const c=$("#choices");c.hidden=false;c.innerHTML=`<div class="hint">${esc(r.message)}</div>`+r.choices.map(h=>`<button class="ex" data-acc="${esc(h.accession)}"><span class="k">${esc(h.accession)} · ${esc(h.id||"")}${h.reviewed?" · reviewed":""}</span><b>${esc(h.name)}</b><small>${esc(h.gene)} · ${esc(h.organism)} · ${h.length} aa</small></button>`).join("");
    c.querySelectorAll("button").forEach(b=>b.onclick=()=>lookup({accession:b.dataset.acc}));return}
-  await openItem(r.item)}
+  await openItem(r.item,r.notice)}
  catch(e){go("home");homeErr(e.message)}}
 
 /* ---------------------------------------------------------------- views */
@@ -497,8 +497,9 @@ async function sideRecent(rows){if(!rows){try{rows=await api("/api/items?limit=6
  $$("#sideRecent a").forEach(a=>a.onclick=e=>{e.preventDefault();openItem(a.dataset.item)})}
 
 /* ---------------------------------------------------------------- results */
-async function openItem(id){try{const R=await api(`/api/items/${id}`);S.item=id;S.R=R;S.res={};history.replaceState(null,"","#item="+id);renderItem(R);go("results");sideRecent()}catch(e){go("home");homeErr(e.message)}}
-async function refreshItem(keepView=true){if(!S.item)return;const y=scrollY;const R=await api(`/api/items/${S.item}`);S.R=R;renderItem(R,keepView);setTimeout(()=>scrollTo(0,y),0)}
+function withNotice(id,R){const n=(S.notices||{})[id];if(n)R.flags=[{level:"info",text:esc(n)},...R.flags];return R}
+async function openItem(id,notice){try{if(notice)(S.notices=S.notices||{})[id]=notice;const R=withNotice(id,await api(`/api/items/${id}`));S.item=id;S.R=R;S.res={};history.replaceState(null,"","#item="+id);renderItem(R);go("results");sideRecent()}catch(e){go("home");homeErr(e.message)}}
+async function refreshItem(keepView=true){if(!S.item)return;const y=scrollY;const R=withNotice(S.item,await api(`/api/items/${S.item}`));S.R=R;renderItem(R,keepView);setTimeout(()=>scrollTo(0,y),0)}
 const F=p=>`/api/items/${S.item}/files/${p}`;
 async function residues(sid,chain){const k=sid+"|"+(chain||"");if(!S.res[k])S.res[k]=await api(`/api/items/${S.item}/residues/${encodeURIComponent(sid)}${chain?`?chain=${encodeURIComponent(chain)}`:""}`);return S.res[k]}
 
@@ -516,7 +517,7 @@ function renderItem(R,keep){const root=$("#results");const protein=R.kind==="pro
  root.innerHTML="";S.viewer=null;
  const top=el("div","top");top.innerHTML=`<span class="badge">${protein?"protein":"uploaded structure"}</span><h1 title="${esc(R.name)}">${esc(R.name)}<small>${esc(R.title&&R.title!==R.name?R.title:"")}${R.organism?" · "+esc(R.organism):""}</small></h1>`;
  if(protein){const rb=btn("Refresh","","Fetch UniProt, AlphaFold, PAE and AlphaMissense again (bypasses the cache)",()=>lookup({accession:R.accession},true));top.appendChild(rb)}
- const pdf=el("a","btn sm accent",DLI+"PDF report");pdf.href=`/api/items/${S.item}/report.pdf`;pdf.setAttribute("download","");top.appendChild(pdf);root.appendChild(top);
+ const pdf=el("a","btn sm accent",DLI+"PDF report");pdf.href=`/api/items/${S.item}/report.pdf`;pdf.setAttribute("download",R.report_name||"");pdf.onclick=e=>{e.preventDefault();makeReport(R,pdf)};top.appendChild(pdf);root.appendChild(top);
  $("#chatCtx").textContent=R.name;setChips(R);
  const tiles=el("div","tiles");tiles.innerHTML=R.tiles.map(t=>`<div class="tile"><b style="${String(t.value).length>10?"font-size:17px":""}">${esc(t.value)}</b><span>${esc(t.label)}</span></div>`).join("");root.appendChild(tiles);
  const ins=el("div","insights");ins.id="summary";ins.innerHTML=`<h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg>What your data says</h2>`+(R.flags.length?R.flags:[{level:"ok",text:"Everything needed was available."}]).map(f=>`<div class="insight"><span class="tag ${f.level}">${{ok:"OK",warn:"CHECK",info:"NOTE"}[f.level]}</span><div>${safe(f.text)}</div></div>`).join("");root.appendChild(ins);
@@ -538,7 +539,8 @@ function renderItem(R,keep){const root=$("#results");const protein=R.kind==="pro
  const obs=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting)$$("#nav a").forEach(a=>a.classList.toggle("on",a.dataset.id===e.target.id))})},{rootMargin:"-30% 0px -60% 0px"});nav.forEach(([id])=>{const n=document.getElementById(id);if(n)obs.observe(n)});
  const dls=[["PDF report",`/api/items/${S.item}/report.pdf`,"pdf"]];for(const s of Object.values(R.structures))dls.push([s.label,F(s.file),(s.file.split(".").pop())]);
  if(R.variants){const vs=R.variants.structure;dls.push(["PyMOL script",`/api/items/${S.item}/script?program=pymol&structure=${encodeURIComponent(vs)}`,"pml"],["ChimeraX script",`/api/items/${S.item}/script?program=chimerax&structure=${encodeURIComponent(vs)}`,"cxc"])}
- $("#dl").innerHTML=dls.map(([l,h,x])=>`<a href="${h}" download><span>${esc(l)}</span><span>${esc(x)}</span></a>`).join("");
+ $("#dl").innerHTML=dls.map(([l,h,x],i)=>`<a href="${h}" download="${i===0?esc(R.report_name||""):""}"><span>${esc(l)}</span><span>${esc(x)}</span></a>`).join("");
+ const rep=$("#dl a");if(rep)rep.onclick=e=>{e.preventDefault();makeReport(R)};
 }
 
 /* ---------------------------------------------------------------- UniProt */
@@ -648,11 +650,74 @@ async function loadView(R){const V=S.viewer;if(!V)return;$("#vMsg")&&($("#vMsg")
    const ta=await fetchText(F(A.view_file||A.file)),tb=await fetchText(F(c.superposed_file));const ma=V.addModel(ta,fmtOf(A.view_file||A.file)),mb=V.addModel(tb,"cif");S.models=[{m:ma,meta:A,chain:c.chain_a,tint:"#0f766e"},{m:mb,meta:B,chain:c.chain_b,tint:"#c2410c"}];
    S.doc={};S.doc[A.sid]=await residues(A.sid,c.chain_a);S.doc[B.sid]=await residues(B.sid,c.chain_b);
    $("#vNote").innerHTML=`<span class="dot" style="background:#0f766e"></span>${esc(c.label_a)} ${esc(c.chain_a)} (reference) · <span class="dot" style="background:#c2410c"></span>${esc(c.label_b)} ${esc(c.chain_b)} (moved). Other chains are grey. Colour mode applies to the reference; the moved structure is drawn in orange.`}
-  else{const M=R.structures[S.view.sid];if(!M)throw new Error("No structure loaded.");const tx=await fetchText(F(M.view_file||M.file));const m=V.addModel(tx,fmtOf(M.view_file||M.file));S.models=[{m,meta:M,chain:M.main_chain}];S.doc={};S.doc[M.sid]=await residues(M.sid,M.main_chain);
+  else{const M=R.structures[S.view.sid];if(!M)throw new Error(R.kind==="protein"&&!R.alphafold?"No 3D structure yet: AlphaFold DB has no model of this protein. Load a PDB entry under Experimental structures, or add your own file under Compare.":"No structure loaded.");const tx=await fetchText(F(M.view_file||M.file));const m=V.addModel(tx,fmtOf(M.view_file||M.file));S.models=[{m,meta:M,chain:M.main_chain}];S.doc={};S.doc[M.sid]=await residues(M.sid,M.main_chain);
    const gp=(M.unresolved||[]);$("#vNote").innerHTML=`${esc(M.label)} · main chain ${esc(M.main_chain)}${M.chains.length>1?` · ${M.chains.length} protein chains`:""}${M.span&&M.kind!=="alphafold"?`<br>Chain ${esc(M.main_chain)} covers ${R.kind==="protein"?"UniProt ":""}${M.span[0]}–${M.span[1]}${gp.length?`; not resolved inside that: ${gp.slice(0,8).map(g=>g[0]===g[1]?g[0]:g[0]+"–"+g[1]).join(", ")}${gp.length>8?"…":""}`:" with no gaps"}.`:""}${M.note?"<br>"+esc(M.note):""}`}
   $("#vMsg").hidden=true;styleView(R);V.zoomTo();V.render()}
  catch(e){$("#vMsg").hidden=false;$("#vMsg").textContent=e.message}}
 const fmtOf=f=>/\.pdb$|\.ent$/i.test(f)?"pdb":"cif";
+/* ---------------------------------------------------------------- PDF report
+   The report's 3D pictures come from here: a hidden viewer draws the model (coloured by pLDDT, from the front and
+   turned 180°), the mapped variants and each superposition, and the PNGs go to the server with the request.
+   Without them (assistant, direct download) the server draws CA traces instead. */
+/* principal axes of a model's CA atoms (power iteration on the 3×3 covariance); the model's coordinates are rotated
+   so its longest axis lies along x — a rod-shaped protein then fills a wide picture instead of a corner of a square */
+function orientModel(m){const at=m.selectedAtoms({});const ca=at.filter(a=>a.atom==="CA");if(ca.length<3)return[1,1,1];
+ const c=[0,0,0];ca.forEach(a=>{c[0]+=a.x;c[1]+=a.y;c[2]+=a.z});c.forEach((v,i)=>c[i]=v/ca.length);
+ const C=[[0,0,0],[0,0,0],[0,0,0]];ca.forEach(a=>{const v=[a.x-c[0],a.y-c[1],a.z-c[2]];for(let i=0;i<3;i++)for(let j=0;j<3;j++)C[i][j]+=v[i]*v[j]});
+ const mul=(M,v)=>M.map(r=>r[0]*v[0]+r[1]*v[1]+r[2]*v[2]),nrm=v=>{const n=Math.hypot(...v)||1;return v.map(x=>x/n)};
+ const eig=M=>{let v=nrm([1,0.7,0.3]);for(let k=0;k<80;k++)v=nrm(mul(M,v));const l=mul(M,v).reduce((s,x,i)=>s+x*v[i],0);return[v,l]};
+ const[e1,l1]=eig(C);const C2=C.map((r,i)=>r.map((x,j)=>x-l1*e1[i]*e1[j]));let[e2]=eig(C2);
+ const d=e2.reduce((s,x,i)=>s+x*e1[i],0);e2=nrm(e2.map((x,i)=>x-d*e1[i]));const e3=[e1[1]*e2[2]-e1[2]*e2[1],e1[2]*e2[0]-e1[0]*e2[2],e1[0]*e2[1]-e1[1]*e2[0]];
+ const lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9];
+ at.forEach(a=>{const v=[a.x-c[0],a.y-c[1],a.z-c[2]];const q=[e1,e2,e3].map(e=>e[0]*v[0]+e[1]*v[1]+e[2]*v[2]);a.x=q[0];a.y=q[1];a.z=q[2];if(a.atom==="CA")q.forEach((x,i)=>{lo[i]=Math.min(lo[i],x);hi[i]=Math.max(hi[i],x)})});
+ return hi.map((h,i)=>Math.max(1,h-lo[i]))}
+async function reportSnapshots(R){if(typeof $3Dmol==="undefined")return{};const out={};
+ const div=el("div");div.style.cssText="position:fixed;left:-12000px;top:0;width:1200px;height:640px";document.body.appendChild(div);
+ const V=$3Dmol.createViewer(div,{backgroundColor:"white",antialias:true});
+ /* frame shaped like the molecule seen along its third axis: wide for a rod, square for a globule */
+ let fit=1.12;
+ const frame=ext=>{const h=Math.round(Math.max(380,Math.min(900,1200*Math.max(ext[1],ext[2]*0.8)/ext[0]+120)));div.style.height=h+"px";V.resize();
+  /* zoomTo fits the longest dimension into the frame's height; a rod laid along x can be enlarged by the aspect ratio */
+  fit=Math.max(1.12,Math.min(1200/h,ext[0]/Math.max(ext[1],ext[2]))*0.92)};
+ const shot=()=>{V.zoomTo();V.zoom(fit);V.render();return V.pngURI()};
+ const add=async M=>{const f=M.view_file||M.file;return V.addModel(await fetchText(F(f)),fmtOf(f))};
+ const confCol=M=>M.bkind==="plddt"?(a=>afColor(a.b)):(a=>a.chain===M.main_chain?"#0f766e":"#c9d1d6");
+ const het=m=>V.setStyle({model:m,hetflag:true,not:{resn:["HOH","WAT"]}},{stick:{radius:0.2,colorscheme:"greenCarbon"}});
+ try{
+  const main=R.structures.AF||Object.values(R.structures)[0];
+  if(main){const m=await add(main);const ext=orientModel(m);frame(ext);V.setStyle({model:m},{cartoon:{colorfunc:confCol(main),thickness:0.4}});het(m);
+   V.setView([0,0,0,0,0,0,0,1]);out.model_front=shot();V.rotate(180,"x");out.model_back=shot();V.removeAllModels()}
+  const VR=R.variants;const VM=VR&&R.structures[VR.structure];
+  if(VM){const m=await add(VM);frame(orientModel(m));V.setView([0,0,0,0,0,0,0,1]);V.setStyle({model:m},{cartoon:{colorfunc:confCol(VM),thickness:0.4,opacity:0.9}});het(m);
+   VR.rows.filter(r=>r.key).forEach(r=>{const[ch,num]=r.key.split(":");const sl={model:m,chain:ch,resi:parseInt(num)};
+    V.addStyle(sl,{stick:{radius:0.3,colorscheme:"magentaCarbon"}});V.addStyle({...sl,atom:"CA"},{sphere:{radius:1.1,color:"#c026d3"}});
+    V.addLabel(r.label,{backgroundColor:"#13212b",backgroundOpacity:.85,fontColor:"#fff",fontSize:14,inFront:true,showBackground:true},{...sl,atom:"CA"})});
+   out.variants=shot();V.removeAllLabels();V.removeAllModels()}
+  for(const c of R.comparisons||[]){const A=R.structures[c.a];if(!A)continue;const ma=await add(A);const mb=V.addModel(await fetchText(F(c.superposed_file)),"cif");
+   V.setStyle({model:ma},{cartoon:{colorfunc:a=>a.chain===c.chain_a?"#9aa6ad":"#e3e8eb",thickness:0.4}});
+   V.setStyle({model:mb},{cartoon:{colorfunc:a=>a.chain===c.chain_b?"#0f766e":"#e3e8eb",thickness:0.4}});
+   div.style.height="640px";V.resize();V.zoomTo({model:mb,chain:c.chain_b});V.render();out["cmp:"+c.key]=V.pngURI();V.removeAllModels()}
+ }catch(e){console.warn("report snapshot",e)}finally{try{V.clear()}catch{}div.remove()}
+ return out}
+function saveBlob(blob,fn){const a=el("a");a.href=URL.createObjectURL(blob);a.download=fn;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000)}
+const cdName=(r,fb)=>((r.headers.get("content-disposition")||"").match(/filename="?([^";]+)"?/)||[])[1]||fb||"StructureBench_report.pdf";
+async function makeReport(R,btnEl){if(S.reportBusy)return;S.reportBusy=true;const lab=btnEl&&btnEl.innerHTML;if(btnEl)btnEl.innerHTML='<span class="spin"></span> Writing the report…';
+ try{let snaps={};try{snaps=await reportSnapshots(R)}catch(e){console.warn("report snapshots",e)}
+  const r=await fetch(`/api/items/${S.item}/report`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({snapshots:snaps})});
+  if(r.status===404||r.status===405){
+   /* An older copy of the app is still running and only has the GET route (the page is read from disk, the server
+      code is not — so a rebuild or update while it runs leaves the two out of step). Write the report without the
+      3D pictures rather than failing, and say why. */
+   const g=await fetch(`/api/items/${S.item}/report.pdf`);
+   if(!g.ok)throw new Error(`HTTP ${g.status}`);
+   saveBlob(await g.blob(),cdName(g,R.report_name));
+   toast("Report written without the 3D pictures: the running app is an older version than this page. Quit and reopen Structure Bench, then make it again.");
+   return}
+  if(!r.ok){let d="";try{d=(await r.json()).detail}catch{}throw new Error(d||`HTTP ${r.status}`)}
+  const fn=cdName(r,R.report_name);const blob=await r.blob();saveBlob(blob,fn);
+  S.lastReport={name:fn,size:blob.size,snapshots:Object.keys(snaps)}}
+ catch(e){toast("The PDF report could not be written: "+e.message+". If the app was updated while it was running, quit and reopen it.")}
+ finally{S.reportBusy=false;if(btnEl)btnEl.innerHTML=lab}}
 function keyOf(a){return`${a.chain}:${a.resi}${a.icode&&a.icode.trim()?a.icode.trim():""}`}
 function rowIndex(sid){const d=S.doc&&S.doc[sid];if(!d)return{};if(!d._ix){d._ix={};d.rows.forEach(r=>d._ix[r.key]=r)}return d._ix}
 function domainOf(pos){const u=S.R.uniprot;if(!u||!pos)return null;const ds=u.features.filter(f=>(f.type==="Domain")&&f.start<=pos&&pos<=f.end);if(ds.length)return ds[0];const rs=u.features.filter(f=>f.type==="Region"&&f.start<=pos&&pos<=f.end).sort((a,b)=>(a.end-a.start)-(b.end-b.start));return rs[0]||null}
@@ -766,7 +831,7 @@ function compareCards(R,g){const sids=Object.values(R.structures);const cmps=R.c
  const acts=[svgBtn(()=>fig.querySelector("svg"),`compare_${c.b}_on_${c.a}`)];
  const show=btn("Show both in viewer","","Load the reference and the superposed structure together",()=>{setView({cmp:cmps.length-1});document.getElementById("viewerCard").scrollIntoView({behavior:"smooth",block:"center"})});
  const dl=el("a","btn ghost sm",DLI+"Superposed B (.cif)");dl.href=F(c.superposed_file);dl.setAttribute("download","");
- const tl=el("div","tiles");tl.style.margin="0 16px 10px";tl.innerHTML=`<div class="tile"><b>${c.ce.rmsd!=null?fmt(c.ce.rmsd,2)+" Å":"—"}</b><span>CE RMSD (structural core)</span></div><div class="tile"><b>${fmt(c.rmsd_mapped,2)} Å</b><span>RMSD on ${c.n_pairs} matched residues</span></div><div class="tile"><b>${c.segments.length}</b><span>stretches deviating &gt; 3 Å</span></div>`;
+ const tl=el("div","tiles");tl.style.margin="0 16px 10px";tl.innerHTML=`<div class="tile"><b>${c.ce.rmsd!=null?fmt(c.ce.rmsd,2)+" Å":"—"}</b><span>CE RMSD (structural core)</span></div><div class="tile"><b>${fmt(c.rmsd_core!=null?c.rmsd_core:c.rmsd_mapped,2)} Å</b><span>${c.n_core!=null&&c.n_core<c.n_pairs?`RMSD on the ${c.n_core}-residue common core (all ${c.n_pairs} pairs: ${fmt(c.rmsd_mapped,2)} Å)`:`RMSD on ${c.n_pairs} matched residues`}</span></div><div class="tile"><b>${c.segments.length}</b><span>stretches deviating &gt; 3 Å</span></div>`;
  const wrap=el("div");wrap.appendChild(tl);wrap.appendChild(fig);
  const cc=card({title:`${c.label_b} ${c.chain_b} superposed on ${c.label_a} ${c.chain_a}`,sub:`per-residue CA deviation · ${c.numbering} numbering`,body:wrap,how:c.how,yours:c.yours,wide:true,actions:[show,dl,...acts],id:"cmpRes"});g.appendChild(cc);
  if(cmps.length>1){const others=el("div","hint");others.style.padding="0 16px 12px";others.innerHTML="Earlier comparisons: "+cmps.slice(0,-1).map((x,i)=>`<a href="#" data-i="${i}">${esc(x.b)} on ${esc(x.a)}</a> (${x.ce.rmsd!=null?fmt(x.ce.rmsd,2):"—"} Å)`).join(" · ");others.querySelectorAll("a").forEach(a=>a.onclick=e=>{e.preventDefault();const x=cmps.splice(+a.dataset.i,1)[0];cmps.push(x);S.R.comparisons=cmps;renderItem(S.R,true);document.getElementById("cmpRes").scrollIntoView()});cc.insertBefore(others,cc.querySelector(".ft"))}

@@ -11,4 +11,4 @@ uvicorn[standard]>=0.29
 python-multipart>=0.0.9
 anthropic>=0.40
 certifi>=2024
-pytest>=8                 # tests/ (not needed to run the app)
+pytest>=8                 # tests/ (not needed to run the app); the report test also needs pymupdf (pip install pymupdf)

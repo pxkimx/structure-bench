@@ -34,6 +34,10 @@ def pick(preds: list[dict], acc: str) -> tuple[dict | None, list[dict]]:
     canon = next((p for p in preds if p.get("entryId") == f"AF-{acc}-F1"), None)
     if canon is None:          # some entries are keyed by modelEntityId only
         canon = next((p for p in preds if p.get("modelEntityId") == f"AF-{acc}-F1"), None)
+    if canon is None:          # newer entries have opaque ids (AF-0000000365840314 for the SARS-CoV-2 spike, ColabFold):
+        # the model of the canonical sequence is the one on this exact accession (no isoform suffix) from residue 1
+        canon = next((p for p in preds if (p.get("uniprotAccession") or "").upper() == acc.upper()
+                      and int(p.get("uniprotStart") or 1) == 1 and not p.get("isComplex")), None)
     iso = []
     for p in preds:
         if p is canon:

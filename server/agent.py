@@ -8,7 +8,7 @@ import threading
 from typing import Iterator
 
 from . import core
-from .common import UserFacingError, list_items, load_settings
+from .common import UserFacingError, json_default, list_items, load_settings
 
 DEFAULT_MODEL = "claude-sonnet-5"
 FALLBACK_MODELS = ["claude-sonnet-5", "claude-opus-5-5", "claude-haiku-4-5-20251001"]
@@ -90,39 +90,57 @@ def _slim_variants(v: dict) -> dict:
                      for r in v["rows"]]}
 
 
+def _clean_input(name: str, inp) -> dict:
+    """Check the model's arguments against the tool schema: a missing required argument becomes a sentence the model
+    can act on (not 'KeyError'), and numbers given for string arguments (residue 482, accession 12345) become strings."""
+    spec = next((t["input_schema"] for t in TOOLS if t["name"] == name), None)
+    inp = dict(inp or {}) if isinstance(inp, dict) else {}
+    if spec is None:
+        return inp
+    for k, p in spec.get("properties", {}).items():
+        if p.get("type") == "string" and inp.get(k) is not None and not isinstance(inp[k], str):
+            inp[k] = str(inp[k])
+    missing = [k for k in spec.get("required", []) if inp.get(k) in (None, "")]
+    if missing:
+        raise UserFacingError(f"{name} needs {', '.join(repr(k) for k in missing)}"
+                              + (" — call list_items for the item id." if "item" in missing else "."))
+    return inp
+
+
 def run_tool(name: str, inp: dict) -> str:
     try:
+        inp = _clean_input(name, inp)
         if name == "lookup_protein":
             r = core.lookup(inp.get("gene"), inp.get("species") or "human", inp.get("accession"))
             if "item" in r:
                 s = core.item_summary(r["item"])
-                return json.dumps({"item": r["item"], "name": s.get("name"), "flags": s.get("flags"), "tiles": s.get("tiles")})
-            return json.dumps(r)
+                return json.dumps({"item": r["item"], "name": s.get("name"), "flags": s.get("flags"), "tiles": s.get("tiles")}, default=json_default)
+            return json.dumps(r, default=json_default)
         if name == "list_items":
-            return json.dumps(list_items(20))
+            return json.dumps(list_items(20), default=json_default)
         item = inp.get("item")
         if name == "get_item_result":
-            return json.dumps(core.item_summary(item))[:60000]
+            return json.dumps(core.item_summary(item), default=json_default)[:60000]
         if name == "list_pdb_entries":
             r = core.list_pdb_entries(item)
             r["entries"] = [{k: e.get(k) for k in ("id", "method", "resolution", "segments", "loaded")} for e in r["entries"]]
-            return json.dumps(r)[:40000]
+            return json.dumps(r, default=json_default)[:40000]
         if name == "load_pdb_entry":
             r = core.load_pdb(item, inp["pdb_id"])
             m = r["structure"]
             return json.dumps({"sid": r["sid"], "main_chain": m["main_chain"], "chains": m["chains"], "partners": m.get("partners"),
-                               "method": m.get("method"), "resolution": m.get("resolution")})
+                               "method": m.get("method"), "resolution": m.get("resolution"), "note": m.get("note")}, default=json_default)
         if name == "map_variants":
-            return json.dumps(_slim_variants(core.map_variants(item, inp["variants"], inp.get("structure"))))[:60000]
+            return json.dumps(_slim_variants(core.map_variants(item, inp["variants"], inp.get("structure"))), default=json_default)[:60000]
         if name == "residue_environment":
-            r = core.residue_environment(item, str(inp["residue"]), float(inp.get("radius") or 5), inp.get("structure"))
-            return json.dumps(r)[:40000]
+            r = core.residue_environment(item, str(inp["residue"]), inp.get("radius") or 5, inp.get("structure"))
+            return json.dumps(r, default=json_default)[:40000]
         if name == "compare_structures":
             c = core.compare_structures(item, inp["a"], inp["b"])
             c = {k: v for k, v in c.items() if k not in ("deviation", "how")}
-            return json.dumps(c)
+            return json.dumps(c, default=json_default)
         if name == "alphamissense":
-            return json.dumps(core.alphamissense(item, inp["variants"]))
+            return json.dumps(core.alphamissense(item, inp["variants"]), default=json_default)
         if name == "pymol_script":
             text, fname = core.viewer_script(item, inp.get("program") or "pymol", inp.get("structure"), inp.get("variants"))
             return f"file name: {fname}\n\n{text}"

@@ -65,9 +65,14 @@ _patch_binary_cif()
 
 def sniff(path: Path) -> str:
     """'cif' | 'pdb' | 'bcif' from the content (extensions lie, and .gz hides them)."""
-    raw = path.read_bytes()[:4096]
+    with open(path, "rb") as f:
+        raw = f.read(4096)
     if raw[:2] == b"\x1f\x8b":
-        raw = gzip.decompress(path.read_bytes())[:4096]
+        try:
+            with gzip.open(path, "rb") as f:
+                raw = f.read(4096)
+        except (OSError, EOFError):
+            return "unknown"
     head = raw.lstrip()
     if head.startswith(b"data_") or b"\n_atom_site." in raw or b"loop_" in raw[:400]:
         return "cif"
@@ -83,15 +88,51 @@ def sniff(path: Path) -> str:
     return "unknown"
 
 
+def is_gzip(path: Path) -> bool:
+    with open(path, "rb") as f:
+        return f.read(2) == b"\x1f\x8b"
+
+
+def text_copy(path: Path) -> Path:
+    """The file itself, or for a gzipped one a decompressed copy next to it ('x.cif.gz' → 'x.unzipped.cif'). The copy
+    gets its own name so it can never overwrite another upload called 'x.cif'; the viewer and the mmCIF name reader
+    use it, since neither reads gzip."""
+    path = Path(path)
+    if not is_gzip(path):
+        return path
+    out = path.with_name(text_copy_name(path.name))
+    if not out.exists() or out.stat().st_mtime < path.stat().st_mtime:
+        with gzip.open(path, "rb") as fi, open(out, "wb") as fo:
+            shutil.copyfileobj(fi, fo, 1 << 20)
+    return out
+
+
+def text_copy_name(name: str) -> str:
+    base = name[:-3] if name.endswith(".gz") else name
+    stem, dot, ext = base.rpartition(".")
+    return f"{stem}.unzipped.{ext}" if dot and stem else f"{base}.unzipped"
+
+
+def gunzipped_size(data: bytes, limit: int) -> int:
+    """Size of gzip-compressed bytes once decompressed, counting only up to just past `limit` (no huge allocation)."""
+    import zlib
+    d = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    n = 0
+    for i in range(0, len(data), 1 << 20):
+        n += len(d.decompress(data[i:i + (1 << 20)], limit + 1 - n if limit + 1 > n else 1))
+        while d.unconsumed_tail and n <= limit:
+            n += len(d.decompress(d.unconsumed_tail, limit + 1 - n))
+        if n > limit:
+            return n
+    return n
+
+
 def load(path: Path, sid: str = "s"):
     """Parse a .cif / .pdb / .bcif (optionally .gz) with the matching Bio.PDB parser, quietly."""
     from Bio.PDB import MMCIFParser, PDBParser
     path = Path(path)
     fmt = sniff(path)
-    src = path
-    if path.read_bytes()[:2] == b"\x1f\x8b" and fmt != "bcif":
-        src = path.with_name(path.name[:-3] if path.name.endswith(".gz") else path.name + ".unz")
-        src.write_bytes(gzip.decompress(path.read_bytes()))
+    src = text_copy(path)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         if fmt == "cif":
@@ -208,59 +249,105 @@ def _clean(s: str) -> str:
     return "".join(c if c in ok else "X" for c in s.upper())
 
 
-def map_sequence(query: str, ref: str, window: int = 15, min_local: float = 0.6) -> dict:
+MAX_PLACEHOLDER = 300     # longest run of unresolved residues (from the author numbering) filled in before aligning
+
+
+def map_sequence(query: str, ref: str, window: int = 15, min_local: float = 0.6, nums: list | None = None) -> dict:
     """Map every position of `query` (structure chain) onto `ref` (UniProt). Returns 1-based ref positions
     (None where the chain residue has no counterpart), identity over mapped pairs, and ref coverage.
 
-    Aligned pairs whose local identity (over a window of `window` aligned pairs) is below `min_local` are
-    dropped: that is how a fusion partner, an expression tag or a linker that the global alignment has
-    smeared across the sequence is kept from being mapped onto the protein.
+    `nums` (the chain's author residue numbers) fills unresolved stretches with placeholders before aligning, so
+    a residue next to a gap lands where its numbering says rather than on an equally good match a few residues
+    away (2GS2: E722 before three missing residues is EGFR E746, not E749). Jumps of more than MAX_PLACEHOLDER or
+    backwards (fusion partners numbered 1002…) get no placeholders.
+
+    Aligned pairs are kept only where some window of `window` consecutive alignment events is at least
+    `min_local` identical, counting chain residues that the alignment inserts (no UniProt counterpart) as
+    mismatches — that is how a fusion partner, an expression tag or a linker smeared across the sequence by the
+    global alignment is kept from being mapped onto the protein (2RH1's T4 lysozyme, 3SN6's). Then every kept run
+    is trimmed at both ends until it starts with an identical pair followed by at least 4 identical of 5.
     """
     if not query or not ref:
         return {"pos": [None] * len(query), "identity": 0.0, "aligned": 0, "coverage": 0.0, "dropped": 0}
-    aln = aligner().align(_clean(ref), _clean(query))[0]
-    pairs = []
+    q2, real = [], []                       # the query with placeholders; real[j] = query index, or None
+    for i, c in enumerate(query):
+        if nums is not None and i > 0:
+            try:
+                gap = int(nums[i]) - int(nums[i - 1]) - 1
+            except (TypeError, ValueError):
+                gap = 0
+            if 1 <= gap <= MAX_PLACEHOLDER:
+                q2 += ["X"] * gap
+                real += [None] * gap
+        q2.append(c)
+        real.append(i)
+    aln = aligner().align(_clean(ref), _clean("".join(q2)))[0]
+    ev = []                                  # alignment events in order: (query index, ref index | None, identical)
+    qprev = 0
     for (t0, t1), (q0, q1) in zip(*aln.aligned):
+        for j in range(qprev, int(q0)):      # chain residues the alignment inserts: no UniProt counterpart
+            if real[j] is not None:
+                ev.append((real[j], None, False))
         for k in range(int(t1 - t0)):
-            ti, qi = int(t0) + k, int(q0) + k
-            pairs.append((qi, ti, ref[ti].upper() == query[qi].upper()))
-    match = np.array([m for _, _, m in pairs], dtype=float)
-    n_p = len(pairs)
-    keep = np.ones(n_p, bool)
-    if n_p >= window:
-        # a pair is kept when at least one window of `window` consecutive aligned pairs containing it is
-        # locally identical enough — so the true segment keeps its ends, and a tag or fusion partner does not
+            ti, j = int(t0) + k, int(q0) + k
+            if real[j] is not None:
+                qi = real[j]
+                ev.append((qi, ti, ref[ti].upper() == query[qi].upper()))
+        qprev = int(q1)
+    for j in range(qprev, len(q2)):
+        if real[j] is not None:
+            ev.append((real[j], None, False))
+    match = np.array([m for _, _, m in ev], dtype=float)
+    n_e = len(ev)
+    keep = np.array([t is not None for _, t, _ in ev], bool)
+    if n_e >= window:
         cs = np.concatenate([[0.0], np.cumsum(match)])
         good = (cs[window:] - cs[:-window]) / window >= min_local          # window starting at j is good
-        keep[:] = False
+        win = np.zeros(n_e, bool)
         for j in np.flatnonzero(good):
-            keep[j:j + window] = True
-        # then trim mismatches off the ends of every kept run (the last tag residue next to a real one)
+            win[j:j + window] = True
+        keep &= win
+        # trim both ends of every kept run: an end must be an identical pair with ≥ 4 of the 5 events next to it
+        # (inwards, itself included) identical, spaced in UniProt as they are in the chain's numbering — a lone
+        # chance match in a fusion partner or tag (1IFR's GSH: H434 is not LMNA H433) is not an anchor
+        num = [int(nums[qi]) if nums is not None and isinstance(nums[qi], (int, np.integer)) else qi for qi, _, _ in ev]
+
+        def anchor(i, step, lo, hi):
+            ks = [k for k in range(i, i + 5 * step, step) if lo <= k <= hi]
+            if ev[i][1] is None:
+                return False
+            if nums is not None and all(ev[k][1] is not None and num[k] == ev[k][1] + 1 for k in ks):
+                return True        # numbered exactly as UniProt: the end belongs even where it differs (4OBE's KRAS4B tail)
+            if not match[i] or sum(match[k] for k in ks) < min(4, len(ks)):
+                return False
+            pr = sorted(k for k in ks if ev[k][1] is not None)
+            return all(ev[b][1] - ev[a][1] == num[b] - num[a] for a, b in zip(pr, pr[1:]))
         i = 0
-        while i < n_p:
-            if not keep[i]:
+        while i < n_e:
+            if not win[i]:
                 i += 1
                 continue
             j = i
-            while j < n_p and keep[j]:
+            while j < n_e and win[j]:
                 j += 1
             a, b = i, j - 1
-            while a <= b and not match[a]:
+            while a <= b and not anchor(a, 1, a, b):
                 keep[a] = False
                 a += 1
-            while b >= a and not match[b]:
+            while b >= a and not anchor(b, -1, a, b):
                 keep[b] = False
                 b -= 1
             i = j
     pos = [None] * len(query)
     same = n = 0
-    for (qi, ti, m), k in zip(pairs, keep):
-        if k:
+    for (qi, ti, m), k in zip(ev, keep):
+        if k and ti is not None:
             pos[qi] = ti + 1
             n += 1
             same += m
+    n_pairs = sum(1 for _, t, _ in ev if t is not None)
     return {"pos": pos, "identity": round(same / n, 4) if n else 0.0, "aligned": n,
-            "coverage": round(n / len(ref), 4), "score": float(aln.score), "dropped": int((~keep).sum())}
+            "coverage": round(n / len(ref), 4), "score": float(aln.score), "dropped": int(n_pairs - n)}
 
 
 # ---------------------------------------------------------------- building sub-models
@@ -522,19 +609,53 @@ def all_atoms(structure):
             yield a
 
 
-def superpose_pairs(fixed_ca: list, moving_ca: list, moving_structure):
-    """Superimposer on matched CA pairs, then move the whole moving structure (all altlocs). Returns (rms, (rot, tran)).
+def _kabsch(X: np.ndarray, Y: np.ndarray):
+    """(rot, tran) that best puts Y on X, in Bio.PDB's convention: Y @ rot + tran."""
+    from Bio.SVDSuperimposer import SVDSuperimposer
+    sup = SVDSuperimposer()
+    sup.set(X, Y)
+    sup.run()
+    return sup.get_rotran()
+
+
+def superpose_pairs(fixed_ca: list, moving_ca: list, moving_structure, cutoff: float = 3.0, cycles: int = 5):
+    """Superpose matched CA pairs on their largest common rigid core, then move the whole moving structure.
+
+    A least-squares fit over every pair is dragged by any part that moved as a block — a flexible tail, a hinged
+    domain — and then shows the whole chain as 'deviating' (EGFR kinase, AlphaFold vs 1M17: well under 1 Å over the
+    kinase core but 12 Å over all pairs, because a C-terminal tail sits elsewhere). So the fit is seeded on every
+    stretch of 20 consecutive pairs, the seed that brings the most pairs within `cutoff` Å wins, and the fit is
+    refined on the pairs within `cutoff` until they stop changing (≤ `cycles` times) — the idea behind LGA/TM-align
+    style superposition. Falls back to all pairs when no core of ≥ 3 pairs exists. Returns (rms over all pairs,
+    (rot, tran), core mask, rms over the core).
 
     The moving structure must be a freshly parsed one, not Entity.copy(): a copied DisorderedAtom keeps pointing
     at the original's selected altloc, so transforming the copy silently leaves those atoms where they were.
     """
-    from Bio.PDB import Superimposer
-    sup = Superimposer()
-    sup.set_atoms(fixed_ca, moving_ca)
-    rot, tran = sup.rotran
+    X = np.array([a.coord for a in fixed_ca], dtype=float)
+    Y = np.array([a.coord for a in moving_ca], dtype=float)
+    n = len(X)
+    dev = lambda rt: np.linalg.norm(X - (Y @ rt[0] + rt[1]), axis=1)  # noqa: E731
+    best = None
+    L = min(n, 20)
+    for s0 in range(0, n - L + 1, max(1, L // 4)):
+        rt = _kabsch(X[s0:s0 + L], Y[s0:s0 + L])
+        k = int((dev(rt) <= cutoff).sum())
+        if best is None or k > best[0]:
+            best = (k, rt)
+    core = np.ones(n, bool)
+    if best and best[0] >= 3:
+        core = dev(best[1]) <= cutoff
+        for _ in range(cycles):
+            new = dev(_kabsch(X[core], Y[core])) <= cutoff
+            if new.sum() < 3 or (new == core).all():
+                break
+            core = new
+    rot, tran = _kabsch(X[core], Y[core])
+    d = dev((rot, tran))
     for a in all_atoms(moving_structure):
         a.transform(rot, tran)
-    return float(sup.rms), (rot, tran)
+    return float(np.sqrt(np.mean(d ** 2))), (rot, tran), core, float(np.sqrt(np.mean(d[core] ** 2)))
 
 
 def replace_bfactor(structure, values: dict, default: float = 0.0):

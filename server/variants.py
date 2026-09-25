@@ -85,6 +85,7 @@ def check_reference(v: dict, seq: str, signal_len: int = 0, isoforms: list[dict]
         return {"ok": True, "message": ""}
     got = seq[pos - 1] if 1 <= pos <= n else None
     msg = (f"Position {pos} in {what} is {NAME.get(got, got)} ({got}), not {NAME.get(ref, ref)} ({ref})." if got
+           else f"Position {pos} does not exist: protein numbering starts at 1 (Met1)." if pos < 1
            else f"Position {pos} is beyond the end of {what} ({n} residues).")
     sugg = []
     offs = []

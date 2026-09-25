@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import shutil
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -82,7 +83,8 @@ def cache_path(rel: str) -> Path:
 
 
 def fetch(url: str, rel: str, what: str, refresh: bool = False) -> tuple[bytes, str]:
-    """Return (content, source) where source is 'cache' | 'network' | 'example'.
+    """Return (content, source) where source is 'cache' | 'network' | 'example' | 'stale' (a refresh was asked
+    for but the network failed, so the earlier cached copy is returned — callers must say so).
 
     what — a short phrase for messages ("the UniProt entry for P02545").
     """
@@ -96,8 +98,8 @@ def fetch(url: str, rel: str, what: str, refresh: bool = False) -> tuple[bytes, 
             with _urlopen_with_timeout(url) as r:
                 data = r.read()
             p.parent.mkdir(parents=True, exist_ok=True)
-            tmp = p.with_suffix(p.suffix + ".part")
-            tmp.write_bytes(data)
+            tmp = p.with_name(f"{p.name}.{os.getpid()}.{threading.get_ident()}.part")   # one per thread: two
+            tmp.write_bytes(data)                                                          # downloads of one file must not share it
             tmp.replace(p)
             print(f"[net] {url} {len(data)//1024} KB in {time.time()-t0:.1f}s", flush=True)
             return data, "network"
@@ -110,7 +112,7 @@ def fetch(url: str, rel: str, what: str, refresh: bool = False) -> tuple[bytes, 
     else:
         err = "offline mode"
     if p.exists() and p.stat().st_size > 0:          # refresh failed: the cached copy is still better than nothing
-        return p.read_bytes(), "cache"
+        return p.read_bytes(), "stale" if refresh else "cache"
     seed = _seed_path(rel)
     if seed:
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -140,7 +142,9 @@ def cached_call(rel: str, fn, what: str, refresh: bool = False):
         try:
             out = fn()
             p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(json.dumps(out))
+            tmp = p.with_name(f"{p.name}.{os.getpid()}.{threading.get_ident()}.part")
+            tmp.write_text(json.dumps(out))
+            tmp.replace(p)                     # atomic: a concurrent reader never sees half a file
             return out, "network"
         except urllib.error.HTTPError as e:
             if e.code == 404:
@@ -151,7 +155,7 @@ def cached_call(rel: str, fn, what: str, refresh: bool = False):
     else:
         err = "offline mode"
     if p.exists():
-        return json.loads(p.read_text()), "cache"
+        return json.loads(p.read_text()), "stale" if refresh else "cache"
     seed = _seed_path(rel)
     if seed:
         p.parent.mkdir(parents=True, exist_ok=True)

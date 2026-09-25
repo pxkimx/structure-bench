@@ -23,7 +23,9 @@ from . import variants as vr
 from .common import (UserFacingError, VERSION, WORK, dump, item_dir, load_result, log_exc, new_item_dir, now_iso,
                      save_result, touch, versions)
 
-SCHEMA = 1            # bump when result.json changes shape, so an old saved lookup is rebuilt instead of reused
+SCHEMA = 2            # bump when result.json changes shape, so an old saved lookup is rebuilt instead of reused
+MAX_DOMAIN_LINES = 12                  # domains described one by one in a reading; titin has ~300
+MAX_STRUCTURE_BYTES = 200 * 2**20      # largest structure file (after gunzip) the app parses and the viewer draws
 _LOCKS: dict[str, threading.Lock] = {}
 _GLOBAL = threading.Lock()
 
@@ -94,14 +96,25 @@ def lookup(gene: str | None = None, species="human", accession: str | None = Non
            reuse: bool = True) -> dict:
     """Gene symbol + organism, or a UniProt accession → an item (or a list of choices when several reviewed
     entries match the gene). Returns {"item": id} | {"choices": [...], "message": ...}."""
+    gene = str(gene).strip() if gene is not None else None
+    accession = str(accession).strip() if accession is not None else None
     query = {"gene": gene, "species": species, "accession": accession}
     flags = []
+    notice = None
     acc = (accession or "").strip().upper()
     if not acc and gene and up.is_accession(gene) and not gene.isalpha():
         acc = gene.strip().upper()
     if acc:
         if not up.is_accession(acc):
             raise UserFacingError(f"'{accession}' is not a UniProt accession (they look like P02545 or Q9Y6K9).")
+        if "-" in acc:
+            # an isoform accession (P02545-2): every panel is built on the canonical sequence, which is what UniProt
+            # features, AlphaFold's main model and AlphaMissense are numbered on — say so instead of dropping it silently
+            base = acc.split("-")[0]
+            notice = (f"{acc} names an isoform of {base}. Structure Bench shows the canonical isoform ({base}): UniProt "
+                      "features, variant numbering and AlphaMissense all use its sequence. If AlphaFold DB has a model of "
+                      f"{acc}, it is listed under Isoform models in the Protein panel — load it there to view or compare it, "
+                      "and number variants on the canonical sequence.")
         acc = acc.split("-")[0]
     else:
         if not gene:
@@ -120,27 +133,44 @@ def lookup(gene: str | None = None, species="human", accession: str | None = Non
         if not res["reviewed"]:
             flags.append({"level": "warn", "text": f"No reviewed (Swiss-Prot) entry for {gene} in {res['species']}; using the "
                                                    "unreviewed (TrEMBL) entry — its annotation is automatic."})
+        # UniProt's gene_exact also matches synonyms (ALB is a synonym of FBF1), so an entry whose *primary* gene name
+        # is the query wins; only several primary matches (CDKN2A → p16 and ARF) are a real choice
+        primary = [h for h in hits if (h.get("gene") or "").lower() == gene.lower()]
+        if len(primary) == 1 and len(hits) > 1:
+            others = ", ".join(f"{h['gene'] or '?'} ({h['accession']})" for h in hits if h is not primary[0])
+            flags.append({"level": "info", "text": f"{gene} is also listed as a synonym of {others}; this page is the entry whose "
+                                                   f"primary gene name is {gene}. Search by accession for the other."})
+            hits = primary
+        elif len(primary) > 1:
+            hits = primary + [h for h in hits if h not in primary]
         if len(hits) > 1:
-            return {"choices": hits, "message": f"{len(hits)} {'reviewed ' if res['reviewed'] else ''}UniProt entries have gene "
-                                                 f"name {gene} in {res['species']}. Pick one."}
+            syn = len(hits) - len(primary)
+            return {"choices": hits, "message": f"{len(hits)} {'reviewed ' if res['reviewed'] else 'unreviewed (TrEMBL) '}UniProt entries "
+                                                 f"have gene name {gene} in {res['species']}"
+                                                 + (f" ({syn} of them only as a synonym, listed last)" if syn and primary else "")
+                                                 + ". Pick one."}
         acc = hits[0]["accession"]
         query["taxon"] = res["taxon"]
-    if reuse and not refresh:
-        for d in sorted(WORK.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
-            try:
-                r = json.loads((d / "result.json").read_text())
-                if r.get("kind") == "protein" and r.get("accession") == acc and r.get("schema") == SCHEMA:
-                    touch(d.name)
-                    return {"item": d.name, "reused": True}
-            except Exception:  # noqa: BLE001
-                continue
-    d = new_item_dir()
-    try:
-        build_protein(d, acc, query, refresh, flags)
-    except Exception:
-        shutil.rmtree(d, ignore_errors=True)
-        raise
-    return {"item": d.name}
+    # one build per accession at a time: eight identical requests (a double-click, several tabs, the assistant and
+    # the page together) must end in one item, not eight copies each downloading and computing the same thing
+    with _lock("lookup:" + acc):
+        if reuse and not refresh:
+            for d in sorted((x for x in WORK.iterdir() if x.is_dir()), key=lambda x: x.stat().st_mtime, reverse=True):
+                try:
+                    r = json.loads((d / "result.json").read_text())
+                    asked = str((r.get("query") or {}).get("accession") or "").strip().upper().split("-")[0]
+                    if r.get("kind") == "protein" and acc in (r.get("accession"), asked) and r.get("schema") == SCHEMA:
+                        touch(d.name)
+                        return {"item": d.name, "reused": True, **({"notice": notice} if notice else {})}
+                except Exception:  # noqa: BLE001
+                    continue
+        d = new_item_dir()
+        try:
+            build_protein(d, acc, query, refresh, flags)
+        except Exception:
+            shutil.rmtree(d, ignore_errors=True)
+            raise
+    return {"item": d.name, **({"notice": notice} if notice else {})}
 
 
 def build_protein(d: Path, acc: str, query: dict, refresh: bool = False, flags: list | None = None) -> dict:
@@ -182,8 +212,15 @@ def build_protein(d: Path, acc: str, query: dict, refresh: bool = False, flags: 
     except net.NetError as e:
         msg = str(e)
         if "does not exist" in msg:
-            flags.append({"level": "info", "text": f"AlphaFold DB has no model for {acc} — typical for very long proteins "
-                                                   "(> 2,700 residues outside the human proteome), viral proteins and some newer entries."})
+            L0 = u["length"] if u else 0
+            if L0 > 2700:
+                why = (f"it is {L0:,} residues long, and AlphaFold DB serves no single model longer than 2,700 residues (for human "
+                       "proteins, overlapping fragment models were released only in the bulk human-proteome download, not per entry)")
+            else:
+                why = ("this happens for some viral proteins, recently added or revised UniProt entries, and sequences with "
+                       "non-standard residues")
+            flags.append({"level": "info", "text": f"AlphaFold DB has no model for {acc}: {why}. Load an experimental structure "
+                                                   "below, or upload a model of your own, to get a 3D view."})
         else:
             flags.append({"level": "info", "text": f"AlphaFold DB could not be reached — the predicted structure, PAE and "
                                                    f"AlphaMissense panels are empty for now. ({msg})"})
@@ -207,8 +244,18 @@ def build_protein(d: Path, acc: str, query: dict, refresh: bool = False, flags: 
         _add_pae(d, res, pred, u, refresh, flags)
         _add_am(d, res, pred, u, refresh, flags)
     res["timings"]["pae_am"] = round(time.time() - t2, 2)
+    tool = (pred or {}).get("toolUsed") or ""
+    if af and tool and not tool.lower().startswith("alphafold"):
+        flags.append({"level": "info", "text": f"This AlphaFold DB entry ({af['entry']}) was predicted with {tool}"
+                                               + (f" by {pred['providerId']}" if pred.get("providerId") else "")
+                                               + ", not by the DeepMind AlphaFold DB pipeline. pLDDT and PAE mean the same thing, but "
+                                                 "AlphaMissense and isoform models are not available for it."})
     srcs = set(res["sources"].values())
-    if "example" in srcs:
+    stale = sorted(k for k, v in res["sources"].items() if v == "stale")
+    if stale:
+        flags.append({"level": "info", "text": "Refresh was asked for, but the internet could not be reached — showing the copies "
+                                               f"downloaded earlier ({', '.join(stale)}). They may be out of date; try Refresh again when online."})
+    elif "example" in srcs:
         flags.append({"level": "info", "text": "Loaded from the bundled offline example (UniProt, AlphaFold, PAE and AlphaMissense files "
                                                "shipped with the app) because the internet was not reachable. The data are as of the date they were bundled."})
     elif srcs and srcs <= {"cache"}:
@@ -256,7 +303,7 @@ def _add_alphafold(d: Path, res: dict, pred: dict, u: dict | None, refresh: bool
         pos = [start + i for i in range(len(ch["residues"]))]
         ident = 1.0
     else:
-        m = st.map_sequence(ch["sequence"], ref) if ref else {"pos": [r.id[1] for r in ch["residues"]], "identity": 1.0}
+        m = st.map_sequence(ch["sequence"], ref, nums=[r.id[1] for r in ch["residues"]]) if ref else {"pos": [r.id[1] for r in ch["residues"]], "identity": 1.0}
         pos, ident = m["pos"], m["identity"]
         if ref:
             flags.append({"level": "warn", "text": f"The AlphaFold model's sequence differs from the current UniProt sequence "
@@ -364,7 +411,10 @@ def _findings(res: dict, flags: list):
             top.append({"level": "ok", "text": "All annotated domains have confident relative positions (mean PAE &lt; 10 Å between them)."})
     if u:
         n = len(u["pdb"])
-        top.append({"level": "info", "text": f"{n} experimental structure{'s' if n != 1 else ''} listed by UniProt" + (" — see Experimental structures for which parts they cover." if n else " — the AlphaFold model is the only 3D view.")})
+        tail = (" — see Experimental structures for which parts they cover." if n else
+                " — the AlphaFold model is the only 3D view." if af else
+                ", and there is no AlphaFold model either, so there is nothing to show in 3D unless you upload a structure.")
+        top.append({"level": "info", "text": f"{n} experimental structure{'s' if n != 1 else ''} listed by UniProt" + tail})
     if af and af.get("ss_method") == "phi/psi":
         top.append({"level": "info", "text": "Secondary structure is approximated from backbone phi/psi angles because the DSSP program is not installed; "
                                              "'helix-like' and 'extended' are heuristics, and 'extended' also covers disordered stretches."})
@@ -405,7 +455,8 @@ def _texts_protein(res: dict):
         ssp = {r["pos"]: r["ss"] for r in rows if r["pos"]}
         word = st.SS_WORD.get(af.get("ss_method"), st.SS_WORD["phi/psi"])
         within = {b["name"]: b["within"] for b in (pae or {}).get("blocks", [])}
-        for dom in up.main_domains(u):
+        doms_all = up.main_domains(u)
+        for dom in doms_all[:MAX_DOMAIN_LINES]:
             seg = [pl[i - 1] for i in range(dom["start"], min(dom["end"], L) + 1) if pl[i - 1] is not None]
             if not seg:
                 continue
@@ -421,6 +472,8 @@ def _texts_protein(res: dict):
             if w is not None and w >= 10 and m >= 70:
                 s += f", but see PAE for how its parts pack: the mean PAE within it is {w:.0f} Å"
             parts.append(s + ".")
+        if len(doms_all) > MAX_DOMAIN_LINES:
+            parts.append(f"({len(doms_all) - MAX_DOMAIN_LINES} further domains are not described one by one; hover the track for each.)")
         if lowruns:
             doms = up.main_domains(u)
             outside = [(a, b) for a, b in lowruns if not any(a >= x["start"] and b <= x["end"] for x in doms)]
@@ -451,7 +504,7 @@ def _texts_protein(res: dict):
             s.insert(0, ("The domains of this protein have confident relative positions." if len(conf) == len(pairs) else
                          "None of the domain pairs have a confident relative position." if not conf else
                          f"{len(conf)} of {len(pairs)} domain pairs have a confident relative position."))
-        for b in pae.get("blocks", []):
+        for b in pae.get("blocks", [])[:MAX_DOMAIN_LINES]:
             if b["within"] >= 10:
                 s.append(f"Within {b['name']} ({b['start']}–{b['end']}) the mean PAE is {b['within']:.0f} Å: its parts are confident "
                          "locally but not rigidly placed against each other.")
@@ -483,6 +536,9 @@ def pdb_yours(u: dict, af: dict | None, blocks: list | None = None) -> str:
     pdb = u["pdb"]
     L = u["length"]
     if not pdb:
+        if not af:
+            return ("UniProt lists no experimental structure for this protein and AlphaFold DB has no model of it, so there is "
+                    "no 3D structure to show; upload a model of your own (for example from ColabFold) to use the structure panels.")
         return ("UniProt lists no experimental structure for this protein, so the AlphaFold model is the only 3D view — "
                 "read it together with its pLDDT and PAE.")
     cov = np.zeros(L + 2, bool)
@@ -500,7 +556,8 @@ def pdb_yours(u: dict, af: dict | None, blocks: list | None = None) -> str:
         big = min((e for e in pdb if e["resolution"] and e["span"] and e["covered"] >= 50), key=lambda e: e["resolution"], default=None)
         if big and big is not best:
             parts.append(f"Best among entries spanning ≥ 50 residues: {big['resolution']:.2f} Å ({big['id']}, {big['span'][0]}–{big['span'][1]}).")
-    for dom in (blocks if blocks is not None else up.main_domains(u)):
+    doms = blocks if blocks is not None else up.main_domains(u)
+    for dom in doms[:MAX_DOMAIN_LINES]:
         n = [e["id"] for e in pdb if any(s["start"] <= dom["end"] and s["end"] >= dom["start"] and
                                            (min(s["end"], dom["end"]) - max(s["start"], dom["start"]) + 1) >= 0.5 * (dom["end"] - dom["start"] + 1)
                                            for s in e["segments"])]
@@ -508,6 +565,10 @@ def pdb_yours(u: dict, af: dict | None, blocks: list | None = None) -> str:
         parts.append(f"{dom['name']} {dom['start']}–{dom['end']}: " +
                      (f"{len(whole)} entr{'y' if len(whole) == 1 else 'ies'} cover it whole ({', '.join(whole[:5])}{'…' if len(whole) > 5 else ''})" if whole
                       else f"no entry covers it whole; {len(n)} cover at least half of it" + (f" ({', '.join(n[:5])})" if n else "")) + ".")
+    if len(doms) > MAX_DOMAIN_LINES:
+        rest = doms[MAX_DOMAIN_LINES:]
+        hit = sum(1 for dom in rest if any(s["start"] <= dom["end"] and s["end"] >= dom["start"] for e in pdb for s in e["segments"]))
+        parts.append(f"… and {len(rest)} more domains, {hit} of them touched by at least one entry (the coverage bars show which).")
     gaps = _runs([i for i in range(1, L + 1) if not cov[i]], gap=0, minlen=20)
     if gaps:
         extra = ""
@@ -546,6 +607,8 @@ def load_pdb(item: str, pdb_id: str, refresh: bool = False) -> dict:
         except net.NetError as e:
             raise UserFacingError(f"PDB entry {pdb_id} could not be downloaded from RCSB and is not in the local cache — {e}") from None
         fname = f"{pdb_id}.cif"
+        if any(m.get("file") == f"structures/{fname}" for k, m in res["structures"].items() if k != sid):
+            fname = f"{pdb_id}-rcsb.cif"          # an upload already called 1IFR.cif: do not overwrite it
         (d / "structures" / fname).write_bytes(data)
         entry = next((e for e in (res.get("uniprot") or {}).get("pdb", []) if e["id"] == pdb_id), None)
         try:
@@ -595,12 +658,16 @@ def _register(d: Path, res: dict, sid: str, fname: str, kind: str, label: str, h
                               "usable atom records.") from None
     except Exception as e:  # noqa: BLE001
         log_exc("parse " + fname)
-        raise UserFacingError(f"{fname} could not be read as a structure: {e}") from None
+        raise UserFacingError(f"{fname} could not be read as a structure — it may be cut short (an interrupted download) "
+                              f"or not a valid {'mmCIF' if st.sniff(path) == 'cif' else 'structure'} file ({type(e).__name__}: {e}).") from None
+    if len(s) == 0:
+        raise UserFacingError(f"{fname} has no atom records (no model) — nothing to show.")
     model = s[0]
     chains = st.polymer_chains(model)
     if not chains:
         raise UserFacingError(f"{fname} contains no protein chain (only nucleic acid, ligands or CA-less residues?).")
-    names = st.entity_names(path) if fmt == "cif" else {}
+    text_path = st.text_copy(path)            # the decompressed file when it came gzipped (for names and the viewer)
+    names = st.entity_names(text_path) if fmt == "cif" else {}
     u = res.get("uniprot")
     ref = (u or {}).get("sequence") or (res.get("sequence") if res.get("kind") == "protein" else "")
     info = []
@@ -608,11 +675,16 @@ def _register(d: Path, res: dict, sid: str, fname: str, kind: str, label: str, h
         c = {"chain": ch["chain"], "n": len(ch["residues"]), "first": ch["first"], "last": ch["last"],
              "molecule": names.get(ch["chain"], ""), "fragments": ch["fragments"]}
         if ref:
-            m = st.map_sequence(ch["sequence"], ref)
+            m = st.map_sequence(ch["sequence"], ref, nums=[r.id[1] for r in ch["residues"]])
             need = min(15, int(0.8 * len(ch["residues"])))
             c.update({"identity": m["identity"], "aligned": m["aligned"], "mapped": m["identity"] >= 0.85 and m["aligned"] >= need,
                       "span": [min(p for p in m["pos"] if p), max(p for p in m["pos"] if p)] if m["aligned"] else None})
             c["_pos"] = m["pos"]
+            # where the chain differs from UniProt (engineered mutation, natural variant, another species): say which
+            diff = [f"{ref[p - 1]}{p}{st.one(r)}" for r, p in zip(ch["residues"], m["pos"]) if p and st.one(r) != ref[p - 1]]
+            if diff:
+                c["differences"] = diff[:12]
+                c["n_differences"] = len(diff)
         else:
             c.update({"identity": None, "mapped": False})
         info.append(c)
@@ -651,9 +723,9 @@ def _register(d: Path, res: dict, sid: str, fname: str, kind: str, label: str, h
     for c in info:
         c.pop("_pos", None)
         c.pop("_contacts", None)
-    view = fname
+    view = text_path.name                 # 3Dmol.js cannot read gzip: the viewer gets the decompressed copy
     if fmt == "bcif":                     # 3Dmol.js reads mmCIF; keep the original and add a text copy for the viewer
-        view = Path(fname).stem + ".view.cif"
+        view = Path(fname).name.split(".")[0] + ".view.cif"
         st.write(s, d / "structures" / view, "cif")
     nmodels = len(s)
     have = sorted({r["pos"] for r in tab["rows"] if r["pos"]})
@@ -663,8 +735,25 @@ def _register(d: Path, res: dict, sid: str, fname: str, kind: str, label: str, h
             "partners": tab["partners"], "ss_method": tab["ss_method"], "models": nmodels,
             "method": "", "resolution": None, "span": [have[0], have[-1]] if have else None,
             "unresolved": [list(g) for g in gaps]}
+    notes = []
     if nmodels > 1:
-        meta["note"] = f"{nmodels} models in the file (NMR ensemble?) — only the first is used."
+        notes.append(f"{nmodels} models in the file (NMR ensemble?) — only the first is used.")
+    if ref and main.get("differences"):
+        n = main["n_differences"]
+        notes.append(f"Chain {main['chain']} differs from the UniProt sequence at {n} of {main['aligned']} mapped residue{'s' if main['aligned'] != 1 else ''} "
+                     f"({', '.join(main['differences'][:6])}{'…' if n > 6 else ''}; UniProt residue, position, residue in this file) — an engineered "
+                     "mutation, a variant or another species. Positions are placed by sequence alignment.")
+    if ref and have:
+        seg = ref[have[0] - 1:have[-1]]
+        starts = [i + 1 for i in range(len(ref) - len(seg) + 1) if ref.startswith(seg, i)]
+        if len(seg) >= 20 and len(starts) > 1:
+            # polyubiquitin (UBB, UBC) and other exact repeats: the chain fits several places equally well
+            others = ", ".join(f"{a}–{a + len(seg) - 1}" for a in starts if a != have[0])
+            notes.append(f"The sequence of chain {main['chain']} occurs {len(starts)} times in the UniProt sequence (identical repeats): "
+                         f"it was placed at {have[0]}–{have[-1]}, but it matches {others} equally well. A variant in another "
+                         "copy will show as not modelled here although this structure represents that copy too.")
+    if notes:
+        meta["note"] = " ".join(notes)
     res["structures"][sid] = meta
     return meta
 
@@ -689,20 +778,36 @@ def upload(filename: str, data: bytes, item: str | None = None) -> dict:
     name = Path(filename or "structure").name
     if not data:
         raise UserFacingError(f"{name} is empty.")
-    safe = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in name)[:80] or "structure"
+    if data[:2] == b"\x1f\x8b" and st.gunzipped_size(data, MAX_STRUCTURE_BYTES) > MAX_STRUCTURE_BYTES:
+        # the size limit is on what has to be parsed and drawn, not on the compressed upload (3J3Q: 50 MB → 242 MB)
+        raise UserFacingError(f"{name} unpacks to more than {MAX_STRUCTURE_BYTES // 2**20} MB — too big to analyse here or draw in the "
+                              "viewer. Upload one model or a subset of chains.")
+    safe = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in name)[:80].lstrip(".") or "structure"
     if item:
         with _lock(item):
             d = item_dir(item)
             res = load_result(item)
+            # a second file with the same name (or 1IFR.pdb then 1IFR.pdb.gz) gets its own file and id instead of
+            # silently replacing the first, which comparisons and mappings may still refer to
+            base, _, rest = safe.partition(".")
+            k = 1
+            while (d / "structures" / safe).exists() or (d / "structures" / st.text_copy_name(safe)).exists():
+                k += 1
+                safe = f"{base}-{k}" + (f".{rest}" if rest else "")
+            sid0 = "UP-" + safe.split(".")[0][:24]
+            sid, k = sid0, 1
+            while sid in res["structures"]:
+                k += 1
+                sid = f"{sid0}-{k}"
             (d / "structures" / safe).write_bytes(data)
             if st.sniff(d / "structures" / safe) == "unknown":
                 (d / "structures" / safe).unlink()
                 raise UserFacingError(f"{name} is not a PDB, mmCIF or BinaryCIF file (.pdb, .cif, .bcif, optionally .gz).")
-            sid = "UP-" + Path(safe).stem.split(".")[0][:24]
             try:
                 meta = _register(d, res, sid, safe, "upload", f"Upload {name}")
             except Exception:
                 (d / "structures" / safe).unlink(missing_ok=True)
+                (d / "structures" / st.text_copy_name(safe)).unlink(missing_ok=True)
                 raise
             save_result(item, res)
             return {"item": item, "sid": sid, "structure": meta}
@@ -787,8 +892,7 @@ def map_variants(item: str, text: str, structure: str | None = None, chain: str 
         meta = _structure_meta(res, structure)
         sid = meta["sid"]
         ch = chain or meta["main_chain"]
-        if ch not in [c["chain"] for c in meta["chains"]]:
-            raise UserFacingError(f"Chain {ch} is not a protein chain of {meta['label']} ({', '.join(c['chain'] for c in meta['chains'])}).")
+        _check_chain(res, meta, ch)
         rows = rows_for(d, sid, ch)
         if not rows:                          # a secondary chain: compute its table on demand
             rows = _chain_table(d, res, meta, ch)
@@ -889,6 +993,12 @@ def map_variants(item: str, text: str, structure: str | None = None, chain: str 
             # informative even where the AlphaFold model is not (pLDDT is still shown, for reference)
             row["reading_plddt"] = (row.get("model_plddt", row.get("plddt")) if meta["bkind"] == "plddt" else None)
             row["flags"] = vr.interpret({**row, "plddt": row["reading_plddt"]})
+            if r is not None and protein and r["aa"] != v["ref"]:
+                row["structure_aa"] = r["aa"]
+                row["flags"].insert(0, {"level": "warn", "text": f"In {meta['label']} chain {ch}, residue {r['num']}{r['icode']} is "
+                                                                 f"{vr.NAME.get(r['aa'], r['aa'])}, not {vr.NAME.get(v['ref'], v['ref'])}: the "
+                                                                 "structure carries a different residue here (an engineered mutation, a variant "
+                                                                 "or another species), so it shows the environment of that residue."})
             out.append(row)
         result = {"structure": sid, "structure_label": meta["label"], "chain": ch, "rows": out, "text": text,
                   "am_available": am_ok, "ss_method": doc.get("ss_method"), "bkind": meta["bkind"], "time": now_iso()}
@@ -907,12 +1017,26 @@ def map_variants(item: str, text: str, structure: str | None = None, chain: str 
         return result
 
 
+def _check_chain(res: dict, meta: dict, ch: str):
+    """A chain must exist, and on a protein item it must be this protein: an α-globin chain of 4HHB has no β-globin
+    (UniProt) positions, so mapping HBB variants or pairing residues on it would put numbers where they do not belong."""
+    c = next((x for x in meta["chains"] if x["chain"] == ch), None)
+    if c is None:
+        raise UserFacingError(f"Chain {ch} is not a protein chain of {meta['label']} ({', '.join(x['chain'] for x in meta['chains'])}).")
+    if res.get("kind") == "protein" and res.get("sequence") and c.get("mapped") is False:
+        mine = ", ".join(x["chain"] for x in meta["chains"] if x.get("mapped"))
+        raise UserFacingError(f"Chain {ch} of {meta['label']}" + (f" ({c['molecule']})" if c.get("molecule") else "")
+                              + f" is not {res.get('name') or 'this protein'}"
+                              + (f" ({c['identity']:.0%} identity over {c.get('aligned', 0)} residues)" if c.get("aligned") else "")
+                              + f", so it has no UniProt positions. Chains of this protein in the entry: {mine or 'none'}.")
+
+
 def _chain_table(d: Path, res: dict, meta: dict, chain: str) -> list[dict]:
     model, _ = _model(d, meta)
     chs = {c["chain"]: c for c in st.polymer_chains(model)}
     c = chs[chain]
     ref = res.get("sequence") if res["kind"] == "protein" else None
-    pos = st.map_sequence(c["sequence"], ref)["pos"] if ref else [r.id[1] for r in c["residues"]]
+    pos = st.map_sequence(c["sequence"], ref, nums=[r.id[1] for r in c["residues"]])["pos"] if ref else [r.id[1] for r in c["residues"]]
     tab = st.residue_table(model, chain, c["residues"], pos, d / meta["file"], meta["bkind"])
     tab["sid"], tab["chain"] = meta["sid"], chain
     dump(tab, d / "structures" / f"{meta['sid']}_{chain}.residues.json")
@@ -1009,6 +1133,8 @@ def residue_environment(item: str, residue: str, radius: float = 5.0, structure:
     rows = rows_for(d, meta["sid"], ch)
     if ":" in r:
         key = r
+        if not any(c.isdigit() for c in key.split(":", 1)[1]):
+            raise UserFacingError(f"'{r}' is not a residue: use a position (482), a variant (R482W) or chain:number (A:482).")
         row = next((x for x in rows if x["key"] == key), None)
     else:
         v = vr.parse(r)
@@ -1017,11 +1143,14 @@ def residue_environment(item: str, residue: str, radius: float = 5.0, structure:
         if row is None:
             raise UserFacingError(f"Residue {p} is not modelled in {meta['label']} chain {ch}.")
         key = row["key"]
-    radius = max(2.0, min(float(radius or 5.0), 12.0))
+    try:
+        radius = max(2.0, min(float(radius or 5.0), 12.0))
+    except (TypeError, ValueError):
+        raise UserFacingError(f"The radius must be a number of Å (2–12), not '{radius}'.") from None
     model, _ = _model(d, meta)
     try:
         nb = st.neighbours(model, key, radius, meta.get("names"))
-    except KeyError:
+    except (KeyError, ValueError):
         raise UserFacingError(f"{key} is not a residue of {meta['label']}.") from None
     pos = row["pos"] if row else None
     out = {"structure": meta["sid"], "label": meta["label"], "residue": row, "radius": radius, "neighbours": nb,
@@ -1036,10 +1165,12 @@ def compare_structures(item: str, a: str, b: str, chain_a: str | None = None, ch
     with _lock(item):
         d = item_dir(item)
         res = load_result(item)
+        if not str(a or "").strip() or not str(b or "").strip():
+            raise UserFacingError("Choose two structures to compare (for example AF and PDB-1IFR).")
         ma, mb = _structure_meta(res, a), _structure_meta(res, b)
         ca, cb = chain_a or ma["main_chain"], chain_b or mb["main_chain"]
-        if ma["sid"] == mb["sid"] and ca == cb and a != b:
-            pass
+        _check_chain(res, ma, ca)
+        _check_chain(res, mb, cb)
         ra = rows_for(d, ma["sid"], ca) or _chain_table(d, res, ma, ca)
         rb = rows_for(d, mb["sid"], cb) or _chain_table(d, res, mb, cb)
         model_a, sa = _model(d, ma)
@@ -1072,16 +1203,19 @@ def compare_structures(item: str, a: str, b: str, chain_a: str | None = None, ch
             keep.append((p, x, y))
         if len(fixed) < 3:
             raise UserFacingError(f"{ma['label']} and {mb['label']} share fewer than 3 matched residues — they do not overlap "
-                                  "in sequence, so they cannot be superposed residue by residue.")
+                                  "in sequence (different parts of the protein, or different proteins), so there is no residue-by-residue "
+                                  "comparison to make and no RMSD is reported.")
         moved, _ = st.load(d / mb["file"], "moved")          # fresh parse — see structure.superpose_pairs
         mv = [st.find_residue(moved[0], y["key"])["CA"] for _, _, y in keep]
-        rms, (rot, tran) = st.superpose_pairs(fixed, mv, moved)
+        rms, (rot, tran), core_mask, rms_core = st.superpose_pairs(fixed, mv, moved)
         dev = []
         af_pl = (res.get("alphafold") or {}).get("plddt") or []
         for (p, x, y), fa, mb_ca in zip(keep, fixed, mv):
             dist = float(np.linalg.norm(fa.coord - mb_ca.coord))
             pl = af_pl[p - 1] if res["kind"] == "protein" and 0 < p <= len(af_pl) else (x["b"] if ma["bkind"] == "plddt" else None)
             dev.append({"pos": p, "a": x["key"], "b": y["key"], "dev": round(dist, 2), "plddt": pl})
+        for x, c in zip(dev, core_mask):
+            x["core"] = bool(c)
         fname = f"superposed_{mb['sid']}_{cb}_on_{ma['sid']}_{ca}.cif"
         st.write(moved, d / "structures" / fname, "cif")
         big = [x["pos"] for x in dev if x["dev"] > 3.0]
@@ -1096,13 +1230,16 @@ def compare_structures(item: str, a: str, b: str, chain_a: str | None = None, ch
                              "terminus": s1 - s0 <= 5 and any(abs(s0 - e) <= 3 or abs(s1 - e) <= 3 for e in ends)})
         cmp = {"key": f"{ma['sid']}:{ca}|{mb['sid']}:{cb}", "a": ma["sid"], "b": mb["sid"], "chain_a": ca, "chain_b": cb,
                "label_a": ma["label"], "label_b": mb["label"], "ce": ce, "rmsd_mapped": round(rms, 3), "n_pairs": len(keep),
+               "rmsd_core": round(rms_core, 3), "n_core": int(core_mask.sum()),
                "numbering": numbering, "deviation": dev, "segments": seg_rows, "superposed_file": f"structures/{fname}",
                "time": round(time.time() - t0, 2)}
         cmp["how"] = ("CE (combinatorial extension, Shindyalov & Bourne 1998; Bio.PDB.cealign) finds the best structural "
                       "alignment of the two chains from their CA atoms alone and reports its RMSD. Then residues are paired by "
-                      f"{'UniProt position' if numbering == 'UniProt' else 'sequence alignment'}, the second structure is "
-                      "superposed on those pairs (Bio.PDB.Superimposer, least squares on CA), and the distance between paired CA "
-                      "atoms is plotted along the sequence with AlphaFold confidence on top. Deviations > 3 Å are marked.")
+                      f"{'UniProt position' if numbering == 'UniProt' else 'sequence alignment'}, and the second structure is "
+                      "superposed on the largest common core of those pairs (least squares on CA, seeded on every stretch of 20 "
+                      "pairs and refined on the pairs that end up within 3 Å — so a flexible tail or a hinged domain does not "
+                      "drag the whole fit). The distance between paired CA atoms is "
+                      "plotted along the sequence with AlphaFold confidence on top. Deviations > 3 Å are marked.")
         cmp["yours"] = _compare_yours(cmp, res)
         res["comparisons"] = [c for c in res.get("comparisons", []) if c["key"] != cmp["key"]] + [cmp]
         save_result(item, res)
@@ -1115,20 +1252,32 @@ def _compare_yours(c: dict, res: dict) -> str:
         parts.append(f"CE overall RMSD {c['ce']['rmsd']:.2f} Å.")
     else:
         parts.append(c["ce"].get("error", "CE did not run."))
-    parts.append(f"Superposed on {c['n_pairs']} residue pairs matched by {'UniProt position' if c['numbering'] == 'UniProt' else 'sequence'}: "
-                 f"RMSD {c['rmsd_mapped']:.2f} Å.")
+    how = "UniProt position" if c["numbering"] == "UniProt" else "sequence"
+    n, nc = c["n_pairs"], c.get("n_core", c["n_pairs"])
+    if nc < n:
+        parts.append(f"Superposed on the {nc} of {n} residue pairs (matched by {how}) that form a common core: core RMSD "
+                     f"{c.get('rmsd_core', c['rmsd_mapped']):.2f} Å; over all {n} pairs {c['rmsd_mapped']:.2f} Å.")
+    else:
+        parts.append(f"Superposed on {n} residue pairs matched by {how}: RMSD {c['rmsd_mapped']:.2f} Å.")
     segs = c["segments"]
     nbig = sum(1 for x in c["deviation"] if x["dev"] > 3)
-    if c["n_pairs"] and nbig > 0.5 * c["n_pairs"]:
-        parts.append(f"{nbig} of {c['n_pairs']} matched residues deviate by more than 3 Å: one rigid superposition cannot fit "
+    if c["ce"].get("rmsd") is not None and c.get("rmsd_core", c["rmsd_mapped"]) > 4 and c["ce"]["rmsd"] > 4:
+        parts.append(("Both RMSDs are large: over the residues they share, the two structures are in very different conformations "
+                      "(or one of them is poorly determined there — check the pLDDT strip)" if res.get("kind") == "protein" else
+                      "Both RMSDs are large: over the residues they share, these two structures do not have the same fold "
+                      "(different proteins, or a conformation too different to superpose)")
+                     + ". No superposition fits them, so do not read the per-residue curve as local differences.")
+        return " ".join(parts)
+    if n and nbig > 0.5 * n:
+        parts.append(f"{nbig} of {n} matched residues deviate by more than 3 Å: no single rigid superposition fits most of "
                      "both structures, which usually means a hinge or a different packing of segments (for a long helix, a small "
                      "kink swings the far end a long way). CE's RMSD, over the part that does align, is the better measure of "
                      "fold similarity; the per-residue curve here mostly shows that global mismatch rather than local "
                      "differences. To compare domains, load entries that cover one domain each.")
         return " ".join(parts)
-    if c["ce"].get("rmsd") is not None and c["rmsd_mapped"] > c["ce"]["rmsd"] + 1.5:
-        parts.append("The sequence-matched RMSD is much larger than CE's: part of the chain moves as a block (a hinge or a "
-                     "differently packed domain), which CE leaves out of its core alignment.")
+    if nc < 0.8 * n:
+        parts.append(f"{n - nc} pairs were left out of the fit: part of the chain sits differently as a block (a hinge, a "
+                     "differently packed domain, or a flexible end), and the curve shows where.")
     if not segs:
         parts.append("No stretch deviates by more than 3 Å — the two agree closely over the shared residues.")
     exp = [s for s in segs if s["mean_plddt"] is not None and s["mean_plddt"] < 70]
@@ -1155,6 +1304,8 @@ def export_structure(item: str, sid: str, bmode: str = "flag", fmt: str = "cif")
     d = item_dir(item)
     res = load_result(item)
     meta = _structure_meta(res, sid)
+    if bmode not in ("flag", "am"):
+        raise UserFacingError(f"Unknown B-factor column '{bmode}': use 'flag' (mapped variants) or 'am' (AlphaMissense).")
     s2, _ = st.load(d / meta["file"], "export")              # fresh parse: the cached one must not be modified
     vals = {}
     ch = meta["main_chain"]
@@ -1177,7 +1328,7 @@ def export_structure(item: str, sid: str, bmode: str = "flag", fmt: str = "cif")
     for m in list(s2)[1:]:
         s2.detach_child(m.id)
     fmt = "pdb" if fmt == "pdb" else "cif"
-    name = f"{res.get('accession') or Path(meta['file']).stem}_{meta['sid']}_{'alphamissense' if bmode == 'am' else 'variants'}.{fmt}"
+    name = f"{res.get('accession') or Path(meta['file']).name.split('.')[0]}_{meta['sid']}_{'alphamissense' if bmode == 'am' else 'variants'}.{fmt}"
     out = d / "exports" / name
     out.parent.mkdir(exist_ok=True)
     try:
@@ -1254,6 +1405,24 @@ def viewer_script(item: str, program: str = "pymol", sid: str | None = None, var
     return "\n".join(L) + "\n", f"{obj}.pml"
 
 
+def report_filename(res: dict, ext: str = "pdf") -> str:
+    """'2026-09-23_StructureBench-LMNA_report.pdf': the day the item was created (not the download day), the gene (or
+    accession) for a lookup, a short name of the file for an upload; letters, digits and hyphens only."""
+    import re
+    date = str(res.get("created") or "")[:10]
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
+        try:
+            date = time.strftime("%Y-%m-%d", time.localtime((item_dir(res["item"]) / "request.json").stat().st_mtime))
+        except Exception:  # noqa: BLE001
+            date = time.strftime("%Y-%m-%d")
+    if res.get("kind") == "protein":
+        what = ((res.get("uniprot") or {}).get("gene") or res.get("accession") or "protein")
+    else:
+        what = Path(str(res.get("name") or "structure")).name.split(".")[0]
+    what = re.sub(r"-{2,}", "-", re.sub(r"[^A-Za-z0-9-]", "-", what)).strip("-")[:40] or "structure"
+    return f"{date}_StructureBench-{what}_report.{ext}"
+
+
 # ---------------------------------------------------------------- for the assistant
 def item_summary(item: str) -> dict:
     """A compact view of an item for the assistant: no per-residue arrays."""
@@ -1280,7 +1449,8 @@ def item_summary(item: str) -> dict:
                                    "am_class", "uniprot_known", "interface", "ligand_contacts", "unresolved")}
             | {"flags": [f["text"] for f in r.get("flags", [])]} for r in v["rows"]]}
     if res.get("comparisons"):
-        out["comparisons"] = [{k: c[k] for k in ("a", "b", "chain_a", "chain_b", "ce", "rmsd_mapped", "n_pairs", "segments", "yours")}
+        out["comparisons"] = [{k: c.get(k) for k in ("a", "b", "chain_a", "chain_b", "ce", "rmsd_mapped", "rmsd_core", "n_core", "n_pairs",
+                                                     "segments", "yours")}
                               for c in res["comparisons"]]
     return out
 
@@ -1334,8 +1504,11 @@ def methods(res: dict) -> list[list[str]]:
                  "residues, extended if phi −180…−45° and psi ≥ 90° or ≤ −150° for ≥ 3 residues. This is a heuristic.")])
     M.append(["Structure mapping and comparison", "Chains of experimental or uploaded structures were extracted with "
               "Bio.PDB.PPBuilder and mapped to UniProt numbering by global alignment (Bio.Align.PairwiseAligner, BLOSUM62, gap "
-              "open −10, extend −0.5, end gaps free). Structures were compared with Bio.PDB.cealign.CEAligner (CE) and, on "
-              "residue pairs matched by UniProt position, superposed with Bio.PDB.Superimposer to give per-residue CA deviations. "
+              "open −10, extend −0.5, end gaps free; unresolved stretches filled in from the residue numbering, and fusion "
+              "partners or tags excluded by a 15-residue local-identity window). Structures were compared with "
+              "Bio.PDB.cealign.CEAligner (CE) and, on residue pairs matched by UniProt position, superposed with "
+              "Bio.SVDSuperimposer on their largest common core (seeded on every 20-pair stretch, refined on the pairs within "
+              "3 Å) to give per-residue CA deviations. "
               "[Shindyalov & Bourne 1998; Henikoff 1992]"])
     M.append(["Software", f"Structure Bench {VERSION} (Paul H. Kim, Ph.D.), Biopython {bv} [Cock 2009], NumPy; 3D view with "
               "3Dmol.js 2.5.5 [Rego & Koes 2015]."])

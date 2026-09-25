@@ -48,11 +48,13 @@ chains), secondary structure, UniProt domain and annotation, AlphaMissense, and 
 the structure with the B-factor column replaced (variant flag or AlphaMissense), PyMOL `.pml`, ChimeraX `.cxc`.
 
 **Compare structures** — AlphaFold vs a PDB entry, two PDB entries, or your own file: CE RMSD, per-residue CA
-deviation after superposing on UniProt-matched pairs, plotted with pLDDT, and a reading of where deviation
+deviation after superposing the largest common core of the UniProt-matched pairs (so a flexible tail or a hinged
+domain does not drag the fit), plotted with pLDDT, and a reading of where deviation
 coincides with low confidence (expected) or not (a real difference). Superposed file downloadable; both shown
 in the viewer.
 
-**Upload** — `.pdb`, `.cif`, `.bcif` (optionally `.gz`), analysed fully offline with the file's own numbering.
+**Upload** — `.pdb`, `.cif`, `.bcif` (optionally `.gz`), analysed fully offline with the file's own numbering. Up to 200 MB
+once unpacked.
 
 ## Internet and honesty
 Every download has a 20 s timeout and is cached in `StructureBench/cache`, so anything looked up once works

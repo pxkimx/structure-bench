@@ -75,6 +75,7 @@ def get_item(item: str):
     r = load_result(item)
     r["item"] = item
     r["citations"] = core.citations(r)
+    r["report_name"] = core.report_filename(r)
     return J(r)
 
 
@@ -84,6 +85,8 @@ def residues(item: str, sid: str, chain: str | None = None):
     meta = res["structures"].get(sid)
     if not meta:
         raise HTTPException(404, f"No structure {sid} in this item.")
+    if chain and chain not in [c["chain"] for c in meta["chains"]]:
+        raise HTTPException(404, f"No protein chain {chain} in {sid}.")
     d = core.residues_doc(item_dir(item), sid, chain or meta["main_chain"])
     if not d:
         core._chain_table(item_dir(item), res, meta, chain or meta["main_chain"])
@@ -172,19 +175,31 @@ def script(item: str, program: str = "pymol", structure: str | None = None):
     return Response(text, media_type="text/plain", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
+class ReportIn(BaseModel):
+    snapshots: dict = {}          # PNG data URLs of the page's 3D viewer: model_front, model_back, variants, cmp:<key>
+
+
+@app.post("/api/items/{item}/report")
+def report_post(item: str, body: ReportIn):
+    """The report as the page makes it: with pictures of the 3D viewer, which only the browser can draw."""
+    return report_pdf(item, body.snapshots)
+
+
 @app.get("/api/items/{item}/report.pdf")
-def report_pdf(item: str):
-    p = report.build_pdf(item)
+def report_pdf(item: str, snapshots: dict | None = None):
+    p = report.build_pdf(item, snapshots)
     res = load_result(item)
-    return FileResponse(p, filename=f"StructureBench_{(res.get('name') or item).replace(' · ', '_').replace(' ', '_')}.pdf",
-                        media_type="application/pdf")
+    res.setdefault("item", item)
+    name = core.report_filename(res)
+    return FileResponse(p, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @app.post("/api/upload")
 async def upload(file: UploadFile = File(...), item: str = Form("")):
     data = await file.read()
-    if len(data) > 200 * 1024 * 1024:
-        raise UserFacingError("That file is larger than 200 MB — too big for the viewer. Upload one model or a subset of chains.")
+    if len(data) > core.MAX_STRUCTURE_BYTES:
+        raise UserFacingError(f"That file is larger than {core.MAX_STRUCTURE_BYTES // 2**20} MB — too big for the viewer. Upload one "
+                              "model or a subset of chains.")
     return J(core.upload(file.filename, data, item or None))
 
 
