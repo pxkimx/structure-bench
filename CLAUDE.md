@@ -61,3 +61,18 @@ Owner: Paul (bench biologist, lamin/progeria background). Explain the *why* in p
   (assistant, direct download, and the page's fallback). Keep both: `web/` is served from disk while `server/` is the
   code loaded at startup, so rebuilding under a running app gives a new page on an old server — the page detects the
   missing route, falls back, and tells the user to restart.
+
+## Quitting (added 2026-09-30, ported from RNAseq Bench)
+`server/lifecycle.py`, tested by `tests/test_lifecycle.py`. Closing the window stops the app. The page holds
+`GET /api/window` (SSE) and posts `/api/alive` every 3 s; **the dropped connection is the signal that counts** —
+some browsers close a tab without firing `pagehide`, so the `sendBeacon` to `/api/closing` is a fallback, not the
+mechanism. Six seconds with nobody connected after a drop → quit; three minutes with nobody connected at all →
+quit; launcher pid (`SB_LAUNCHER_PID`) gone → quit. `SB_NO_AUTOQUIT=1` (dev.sh) turns it off. `launch.sh` in gui mode **waits on the
+server** so the app is a real Dock entry; do not put it back in the background.
+
+Two traps for anyone touching this:
+- A page's heartbeat must be dropped together with its channel (`window_closed`), or the next check clears the
+  "closing" flag and the six seconds silently become three minutes.
+- Find a server with `lsof -nP -iTCP:$PORT -sTCP:LISTEN -t`, never `lsof -ti tcp:$PORT`, which also matches the
+  browser's own end of the connection and lingers after the app quits — the app would refuse to start
+  ("Port 8767 is used by another program"), or pipe the browser's pid into `kill`.

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.4 — 2026-09-30
+- **Structure Bench quits when you close it.** Closing its window — the browser tab it runs in — stops the
+  server a few seconds later, and quitting it in the Dock stops it at once. Nothing is left listening on
+  port 8767. Reloading the page does not stop it. Before this the app kept running after its window
+  was closed and had to be stopped from the sidebar or with "Stop Structure Bench.command".
+
+  How it knows (`server/lifecycle.py`, `tests/test_lifecycle.py`): the open page holds a connection to the
+  server that drops the moment the window goes away, and sends a heartbeat besides. Six seconds with nothing
+  connected after such a drop and the server stops; three minutes with nothing connected at all covers a
+  browser that crashed. The launcher now stays alive alongside the server, so the app is a real entry in the
+  Dock and the server stops when the launcher is killed — which is what quitting from the Dock does.
+- **Fixed: the app could refuse to start after quitting.** The launcher looked for anything using its port,
+  which also matched the browser's own end of a connection to it — that lingers for a while after the app
+  quits. The next launch would have reported "Port 8767 is used by another program", and the branch
+  that stops an older version would have tried to kill the browser. It now looks only for a program
+  listening on the port.
+
 ## 0.1.3 — 2026-09-23
 - **The PDF report button could fail outright.** The page is read from disk on every request, but the server's code is
   loaded once when it starts — so updating or rebuilding the app while it is running leaves a new page talking to an

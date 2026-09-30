@@ -1,6 +1,7 @@
 """Structure Bench web server.  Run:  uvicorn server.app:app --port 8767"""
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import threading
@@ -11,11 +12,12 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Res
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import agent, core, report, uniprot
+from . import agent, core, lifecycle, report, uniprot
 from .common import (HOME, ROOT, VERSION, UserFacingError, item_dir, json_default, list_items, load_result, load_settings,
                      save_settings)
 
 app = FastAPI(title="Structure Bench", version=VERSION)
+lifecycle.start()  # the server stops when the last page is closed, or when the launcher is gone
 
 
 def J(x) -> Response:
@@ -230,7 +232,39 @@ def list_models():
 
 @app.post("/api/quit")
 def quit_server():
-    threading.Timer(0.5, lambda: os._exit(0)).start()
+    """Stop the server (sidebar 'Quit')."""
+    threading.Timer(0.5, lambda: lifecycle.quit_now("asked to quit")).start()
+    return {"ok": True}
+
+
+# Closing the window closes the app. An open page holds the connection below, which drops the moment
+# the window goes away even if the browser closes the tab without telling the page; it also sends a
+# heartbeat, and says so on the way out when it gets the chance. See server/lifecycle.py for the rule.
+@app.get("/api/window")
+async def window_channel(request: Request, page: str = ""):
+    """Held open for as long as a page is open. Nothing is sent over it but keep-alives."""
+    async def stream():
+        token = lifecycle.window_opened(page)
+        try:
+            while not await request.is_disconnected():
+                yield b": open\n\n"
+                await asyncio.sleep(lifecycle.CHECK_S)
+        finally:
+            lifecycle.window_closed(token)
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.post("/api/alive")
+def page_alive(page: str = ""):
+    lifecycle.ping(page or "page")
+    return {"ok": True}
+
+
+@app.post("/api/closing")
+def page_closing(page: str = ""):
+    lifecycle.closing(page or "page")
     return {"ok": True}
 
 
