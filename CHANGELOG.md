@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.5 — 2026-10-07
+- **Light | Dark switch.** A two-way pill with sun and moon icons at the bottom of the sidebar replaces the single
+  toggle button. The lit half shows the theme in use: your choice, or the Mac's own setting until you pick one. The
+  choice is remembered and applied before the page is drawn, so there is no flash of the other theme. Inside Toolbox
+  Launcher the page also takes the launcher's choice (`?appearance=light|dark` in its address, or a message when the
+  launcher's switch is flipped while the page is open). Reports and exports are unchanged.
+
 ## 0.1.4 — 2026-09-30
 - **Structure Bench quits when you close it.** Closing its window — the browser tab it runs in — stops the
   server a few seconds later, and quitting it in the Dock stops it at once. Nothing is left listening on
