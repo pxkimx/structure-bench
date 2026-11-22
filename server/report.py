@@ -605,6 +605,121 @@ def protein_section(doc: Doc, res: dict):
                                   sorted(types.items(), key=lambda x: -x[1])) + ".", max_rows=400)
 
 
+def progerin_png(doc: Doc, b: dict, res: dict) -> Path:
+    L = b["prelamin_length"]
+    d = b["deletion"]
+    fig, ax = plt.subplots(figsize=(7.4, 2.9), dpi=200)
+    col = {"head": "#8aa0ae", "coil": "#5b7c99", "linker": "#b8c4cc", "tail": "#c9d2d8"}
+    for lm in b["landmarks"]:
+        if lm["kind"] in col:
+            ax.add_patch(Rectangle((lm["start"] - 1, 3 - 0.3), lm["end"] - lm["start"] + 1, 0.6, color=col[lm["kind"]], lw=0))
+            if lm["end"] - lm["start"] > 40 and lm["kind"] != "tail":
+                ax.text((lm["start"] + lm["end"]) / 2, 3, lm["name"], ha="center", va="center", fontsize=6, color="white", fontweight="bold")
+    for lm in b["landmarks"]:
+        if lm["kind"] in ("domain", "motif"):
+            c = "#0f766e" if lm["kind"] == "domain" else "#9333ea"
+            ax.add_patch(Rectangle((lm["start"] - 1, 3 - 0.4), lm["end"] - lm["start"] + 1, 0.8, color=c, lw=0))
+            ax.text((lm["start"] + lm["end"]) / 2, 3 + (0.62 if lm["kind"] == "motif" else 0), lm["name"], ha="center", va="center",
+                    fontsize=6, color="white" if lm["kind"] == "domain" else c, fontweight="bold")
+    ax.add_patch(Rectangle((d["start"] - 1, 3 - 0.45), d["length"], 0.9, facecolor="#e4572e", alpha=.45, hatch="////", edgecolor="#e4572e", lw=1))
+    ax.text(d["start"] - 6, 3.52, f"\u0394{d['start']}\u2013{d['end']}", ha="right", fontsize=6.5, color="#e4572e", fontweight="bold")
+    ax.plot([b["cleavage"]["after"], b["cleavage"]["after"]], [2.45, 3.6], color="#b91c1c", lw=1.6)
+    ax.text(b["cleavage"]["after"] - 3, 2.42, "ZMPSTE24 cut", ha="right", fontsize=6, color="#b91c1c", fontweight="bold")
+    fc = b["caax"]["farnesyl"]
+    ax.plot([fc - 0.5], [3], "o", color="#eab308", markeredgecolor="#7a5b00", ms=5)
+    ax.text(L + 6, 3, b["caax"]["sequence"], va="center", fontsize=6.5, color="#7a5b00", fontweight="bold")
+    ax.add_patch(Rectangle((0, 2 - 0.3), b["mature"]["end"], 0.6, color="#2a64b0", lw=0))
+    ax.text(b["mature"]["end"] + 6, 2, f"cut at {b['mature']['end']}: tail and lipid removed", va="center", fontsize=6, color="#5b6b75")
+    ax.add_patch(Rectangle((0, 1 - 0.3), d["start"] - 1, 0.6, color="#c2410c", lw=0))
+    ax.add_patch(Rectangle((d["end"], 1 - 0.3), L - d["end"], 0.6, color="#c2410c", lw=0))
+    ax.plot([d["start"] - 1, d["end"]], [1, 1], color="#c2410c", lw=1.2, ls=(0, (3, 3)))
+    ax.plot([fc - 0.5], [1], "o", color="#eab308", markeredgecolor="#7a5b00", ms=5)
+    ax.text(L + 6, 1, f"{b['caax']['sequence']} \u00b7 C{b['progerin']['farnesyl_cys']}", va="center", fontsize=6.5, color="#7a5b00", fontweight="bold")
+    ax.add_patch(Rectangle((0, -0.3), b["lamin_c"]["shared_end"], 0.6, color="#15803d", lw=0))
+    ax.add_patch(Rectangle((b["lamin_c"]["shared_end"], -0.3), len(b["lamin_c"]["tail"]), 0.6, color="#86efac", lw=0))
+    ax.text(b["lamin_c"]["length"] + 6, 0, b["lamin_c"]["tail"], va="center", fontsize=6.5, color="#15803d", fontweight="bold")
+    vres = res.get("variants") or {}
+    last, lane = -999, 0
+    for r in sorted((r for r in vres.get("rows", []) if r.get("pos") and not r.get("error")), key=lambda r: r["pos"]):
+        lane = (lane + 1) % 3 if r["pos"] - last < 45 else 0      # neighbours' labels go on different heights
+        last = r["pos"]
+        ax.plot([r["pos"]], [3.95], marker="v", color="#c9304f", ms=4, lw=0)
+        ax.text(r["pos"], 4.12 + 0.22 * lane, r["label"], ha="center", fontsize=5.5, color="#c9304f", fontweight="bold")
+    ax.set_yticks([3, 2, 1, 0])
+    ax.set_yticklabels([f"prelamin A \u00b7 {L} aa", f"mature lamin A \u00b7 1\u2013{b['mature']['end']}", f"progerin \u00b7 {b['progerin']['length']} aa",
+                        f"lamin C \u00b7 {b['lamin_c']['length']} aa"], fontsize=7)
+    ax.set_xlim(-5, L + 95)
+    ax.set_ylim(-0.6, 4.85)
+    ax.set_xlabel("prelamin A residue", fontsize=7)
+    ax.tick_params(axis="x", labelsize=7)
+    for sp in ("top", "right", "left"):
+        ax.spines[sp].set_visible(False)
+    fig.tight_layout()
+    return doc.save(fig, "progerin.png")
+
+
+def progerin_section(doc: Doc, res: dict):
+    b = res.get("progerin")
+    if not b:
+        return
+    m = b["mutation"]
+    doc.section("HGPS", "Progerin (HGPS) mode",
+                f"What the Hutchinson–Gilford progeria mutation does to lamin A. Every coordinate was read from UniProt "
+                f"{b['accession']} (entry version {(res.get('uniprot') or {}).get('version', '?')}), the mutation record from "
+                f"ClinVar {m['clinvar']}, the mouse position from UniProt {b['mouse']['accession']}; sources checked {b['verified']}.")
+    rows = [["Mutation", f"{m['transcript']}:{clean(m['cdna'])} · {clean(m['protein'])} · exon {m['exon']} · ClinVar {m['clinvar']} ({m['dbsnp']}) · {m['classification']}"],
+            ["What it does", m["effect"]],
+            ["Deleted segment", f"{b['deletion']['start']}–{b['deletion']['end']} of prelamin A ({b['deletion']['length']} residues). {b['deletion']['source']}"],
+            ["Progerin", f"{b['progerin']['length']} aa (prelamin A {b['prelamin_length']}); UniProt isoform {b['progerin']['isoform'] or '6'}; C-terminus "
+                         f"{b['progerin']['c_terminus']} kept, farnesyl cysteine at progerin position {b['progerin']['farnesyl_cys']}"],
+            ["ZMPSTE24 site", f"{b['cleavage']['residues'][0]}{b['cleavage']['after']} | {b['cleavage']['residues'][1]}{b['cleavage']['before']} — "
+                              + ("inside the deletion: the cut that releases mature lamin A cannot happen in progerin. " if b["cleavage"]["inside_deletion"] else "outside the deletion. ")
+                              + b["cleavage"]["source"]],
+            ["CaaX motif", f"{b['caax']['sequence']} {b['caax']['start']}–{b['caax']['end']}; C{b['caax']['farnesyl']} farnesylated and carboxymethylated; "
+                           f"{b['caax']['propeptide'][0]}–{b['caax']['propeptide'][1]} removed. {b['caax']['source']}"],
+            ["Lamin C", f"{b['texts']['lamin_c']} {b['lamin_c']['source']}"],
+            ["Mouse model", f"Human G{b['mouse']['human_pos']} = mouse G{b['mouse']['mouse_pos']} ({b['mouse']['gene']}, {b['mouse']['accession']}, "
+                            f"{b['mouse']['length']} aa, offset +{b['mouse']['offset']}; {b['mouse']['identity']} identical over "
+                            f"{b['mouse']['human_window']} / {b['mouse']['mouse_window']}). {clean(b['mouse']['model'])}. {b['mouse']['source']}"]]
+    for v in b.get("other_variants", []):
+        rows.append(["Same codon", f"{v['label']} ({clean(v['cdna'])}, {v['clinvar']}, {v['dbsnp']}; {v['classification']}). {v['note']}"])
+    rows = [[a, clean(t)] for a, t in rows]
+    doc.table("The facts and where they come from", ["", ""], rows, [0.17, 0.83])
+    try:
+        img = doc.image(progerin_png(doc, b, res))
+        doc.figure("Prelamin A, mature lamin A, progerin and lamin C", img,
+                   how=f"Prelamin A with its rod segments, NLS, Ig fold and tail (UniProt); the {b['deletion']['length']} residues missing "
+                       f"in progerin hatched in orange; the ZMPSTE24 cut in red; the yellow dot is C{b['caax']['farnesyl']}, the "
+                       "farnesylated cysteine. Below, the three proteins made from the gene, aligned on prelamin A numbering; red "
+                       "triangles are the mapped variants.",
+                   yours=clean(b["texts"]["why"]))
+    except Exception:  # noqa: BLE001
+        doc.add(P("The figure could not be drawn: " + log_exc("progerin figure"), "sub"))
+    doc.add(P("<b>Lonafarnib.</b> " + clean(b["texts"]["lonafarnib"]), "body"), Spacer(1, 6))
+    c = b.get("confidence")
+    if c:
+        doc.add(P("<b>How far to trust the model.</b> " + clean(b["texts"]["model_caveat"]), "body"), Spacer(1, 4))
+        doc.table("AlphaFold confidence of the parts in question", ["Part", "Mean pLDDT", ""],
+                  [[f"Deleted segment {b['deletion']['start']}–{b['deletion']['end']}", _fmt(c["deleted"]), f"{c['deleted_confident']} of {b['deletion']['length']} residues at pLDDT ≥ 70"],
+                   [f"ZMPSTE24 site {b['cleavage']['after']}–{b['cleavage']['before']}", _fmt(c["cleavage"]), ""],
+                   [f"CaaX tail {b['caax']['start']}–{b['caax']['end']}", _fmt(c["caax"]), ""],
+                   ["Ig fold (LTD)", _fmt(c["ig_fold"]), "for comparison"], ["Whole tail", _fmt(c["tail"]), ""]], [0.4, 0.2, 0.4])
+    vres = res.get("variants") or {}
+    vrows = []
+    for r in vres.get("rows", []):
+        if r.get("pos") and not r.get("error"):
+            rel = core.pg.relation(r["pos"], b["deletion"]["start"], b["deletion"]["end"], b["deletion"]["length"])
+            vrows.append([r["label"], str(r["pos"]), rel["text"], "—" if rel["progerin_pos"] is None else str(rel["progerin_pos"])])
+    for v in b.get("hgps_variants", []):
+        vrows.append([v["label"], str(v["pos"]), clean(v["relation"]["text"] + f" · UniProt: {v['description']}"),
+                      "—" if v["relation"]["progerin_pos"] is None else str(v["relation"]["progerin_pos"])])
+    if vrows:
+        doc.table("Variants relative to the HGPS deletion", ["Variant", "Prelamin A", "Relative to the deletion", "Progerin"], vrows, [0.14, 0.12, 0.62, 0.12],
+                  how="Your mapped variants first, then the HGPS variants UniProt annotates. Before the deletion: same number in progerin; inside: "
+                      "the residue does not exist in progerin; after: present, renumbered by −" + str(b["deletion"]["length"]) + ".")
+    doc.add(P("Sources: " + clean(" · ".join(b["sources"])), "sub"))
+
+
 def structure_section(doc: Doc, res: dict, snaps: dict | None):
     protein = res["kind"] == "protein"
     af = res.get("alphafold")
@@ -927,6 +1042,7 @@ def build_pdf(item: str, snapshots: dict | None = None) -> Path:
     cover(doc, res)
     if protein:
         protein_section(doc, res)
+        progerin_section(doc, res)
     structure_section(doc, res, snapshots)
     if protein:
         pdb_section(doc, res)

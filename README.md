@@ -40,6 +40,12 @@ or a UniProt accession; several reviewed hits → you choose.
 - *Experimental structures*: every PDB entry UniProt lists, as coverage bars; **Load** downloads the mmCIF
   (cached), maps its chains to UniProt numbering, and makes it available for mapping and comparison.
 
+**Progerin (HGPS) mode** — for human LMNA (P02545): the 50 residues missing in progerin (607–656), the ZMPSTE24
+site inside that deletion, the CaaX motif that progerin keeps, lamin C and the mouse G609 position, each read
+from UniProt, ClinVar or the papers and cited. A figure of prelamin A, mature lamin A, progerin and lamin C; a
+highlight on the 3D model with an honest note on its low confidence; your variants placed against the deletion;
+progerin FASTA, PyMOL script and a PDF section. No progerin structure is predicted.
+
 **Map variants** — `R482W`, `p.R482W`, `p.Arg482Trp`, `Arg482Trp`, `G608G`, `p.Gly608=`, `R482*`. Each is checked
 against the reference (with a suggestion when the numbering looks like the mature chain, skips Met1, or matches
 an isoform), then described on the chosen structure: pLDDT or B-factor, relative SASA (buried < 20 %, exposed

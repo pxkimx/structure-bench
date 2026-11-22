@@ -17,13 +17,14 @@ import numpy as np
 
 from . import alphafold as afdb
 from . import net
+from . import progerin as pg
 from . import structure as st
 from . import uniprot as up
 from . import variants as vr
 from .common import (UserFacingError, VERSION, WORK, dump, item_dir, load_result, log_exc, new_item_dir, now_iso,
                      save_result, touch, versions)
 
-SCHEMA = 2            # bump when result.json changes shape, so an old saved lookup is rebuilt instead of reused
+SCHEMA = 3            # bump when result.json changes shape, so an old saved lookup is rebuilt instead of reused
 MAX_DOMAIN_LINES = 12                  # domains described one by one in a reading; titin has ~300
 MAX_STRUCTURE_BYTES = 200 * 2**20      # largest structure file (after gunzip) the app parses and the viewer draws
 _LOCKS: dict[str, threading.Lock] = {}
@@ -268,6 +269,7 @@ def build_protein(d: Path, acc: str, query: dict, refresh: bool = False, flags: 
     L = u["length"] if u else len((pred or {}).get("sequence") or "")
     res["length"] = L
     res["sequence"] = u["sequence"] if u else (pred or {}).get("sequence", "")
+    res["progerin"] = pg.block(u, af)      # human LMNA only: the HGPS deletion on the sequence and the model
     _texts_protein(res)
     _findings(res, flags)
     res["tiles"] = [{"value": acc, "label": "UniProt accession"}, {"value": f"{L:,}", "label": "residues"}]
@@ -1405,6 +1407,24 @@ def viewer_script(item: str, program: str = "pymol", sid: str | None = None, var
     return "\n".join(L) + "\n", f"{obj}.pml"
 
 
+def progerin_fasta(item: str) -> tuple[str, str]:
+    res = load_result(item)
+    b = res.get("progerin")
+    if not b:
+        raise UserFacingError("Progerin mode is only available for human LMNA (UniProt P02545).")
+    return pg.fasta(b), "progerin_P02545-6.fasta"
+
+
+def progerin_script(item: str, sid: str | None = None) -> tuple[str, str]:
+    res = load_result(item)
+    b = res.get("progerin")
+    if not b:
+        raise UserFacingError("Progerin mode is only available for human LMNA (UniProt P02545).")
+    meta = _structure_meta(res, sid)
+    rows = rows_for(item_dir(item), meta["sid"], meta["main_chain"])
+    return pg.pymol_script(b, meta, rows, res.get("name", ""), VERSION)
+
+
 def report_filename(res: dict, ext: str = "pdf") -> str:
     """'2026-09-23_StructureBench-LMNA_report.pdf': the day the item was created (not the download day), the gene (or
     accession) for a lookup, a short name of the file for an upload; letters, digits and hyphens only."""
@@ -1469,6 +1489,7 @@ CITATIONS = {
     "pdb": "Berman HM, et al. The Protein Data Bank. Nucleic Acids Res 28:235–242 (2000).",
     "3dmol": "Rego N, Koes D. 3Dmol.js: molecular visualization with WebGL. Bioinformatics 31:1322–1324 (2015).",
     "dssp": "Kabsch W, Sander C. Dictionary of protein secondary structure. Biopolymers 22:2577–2637 (1983).",
+    **pg.PAPERS,
 }
 
 
@@ -1491,6 +1512,19 @@ def methods(res: dict) -> list[list[str]]:
             M.append(["Variant effect prediction", "AlphaMissense pathogenicity scores and classes for every possible missense "
                       "substitution of the canonical isoform were taken from the AlphaFold DB substitution table "
                       "(likely benign < 0.34, ambiguous 0.34–0.564, likely pathogenic > 0.564). [Cheng 2023]"])
+    if res.get("progerin"):
+        b = res["progerin"]
+        M.append(["Progerin (HGPS) mode", f"The HGPS deletion was read from the UniProt entry {res.get('accession')} itself: the "
+                  f"alternative-sequence feature of the isoform named Progerin ({b['progerin']['isoform'] or 'isoform 6'}) gives residues "
+                  f"{b['deletion']['start']}–{b['deletion']['end']}; the ZMPSTE24 cleavage site, the farnesylated cysteine, the "
+                  "propeptide, the mature chain, the lamin C isoform, the NLS and the Ig fold are the entry's own features. The "
+                  f"progerin sequence is the canonical sequence with that segment removed ({b['progerin']['length']} residues). The cDNA "
+                  f"change ({b['mutation']['cdna']}, {b['mutation']['protein']}) and its classification are from ClinVar "
+                  f"{b['mutation']['clinvar']}; the mouse position (Lmna G609G, {b['mouse']['accession']}) was checked by aligning the "
+                  f"C-terminal sequences of the two entries (offset +1, {b['mouse']['identity']} identical over the window shown). "
+                  f"Sources were read on {b['verified']}. Mean pLDDT values are averages of the AlphaFold per-residue confidence over "
+                  "the stated residues; no progerin structure is predicted. [Eriksson 2003; De Sandre-Giovannoli 2003; Osorio 2011; "
+                  "Gordon 2012; Dhillon 2021; Koblan 2021; ClinVar]"])
     M.append(["Solvent accessibility", "Per-residue solvent-accessible surface area was computed with the Shrake–Rupley "
               "algorithm (Bio.PDB.SASA.ShrakeRupley, probe 1.4 Å, 100 points per atom; hydrogens and waters removed) for each "
               "chain alone and together with every chain and ligand within 8 Å, and divided by the theoretical maximum of Tien "
@@ -1521,4 +1555,6 @@ def citations(res: dict) -> list[str]:
         keys = ["shrake", "tien", "biopython", "ce", "blosum", "3dmol"]
     if st.dssp_available():
         keys.append("dssp")
+    if res.get("progerin"):
+        keys += ["eriksson2003", "desandre2003", "osorio2011", "gordon2012", "dhillon2021", "koblan2021", "clinvar"]
     return [CITATIONS[k] for k in keys]

@@ -188,6 +188,18 @@ def script(item: str, program: str = "pymol", structure: str | None = None):
     return Response(text, media_type="text/plain", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
+@app.get("/api/items/{item}/progerin.fasta")
+def progerin_fasta(item: str):
+    text, name = core.progerin_fasta(item)
+    return Response(text, media_type="text/plain", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@app.get("/api/items/{item}/progerin.pml")
+def progerin_script(item: str, structure: str | None = None):
+    text, name = core.progerin_script(item, structure)
+    return Response(text, media_type="text/plain", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
 class ReportIn(BaseModel):
     snapshots: dict = {}          # PNG data URLs of the page's 3D viewer: model_front, model_back, variants, cmp:<key>
 

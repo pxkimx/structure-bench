@@ -149,7 +149,9 @@ def parse_entry(d: dict) -> dict:
         if c.get("commentType") == "ALTERNATIVE PRODUCTS":
             for iso in c.get("isoforms") or []:
                 isoforms.append({"name": (iso.get("name") or {}).get("value", ""), "ids": iso.get("isoformIds") or [],
-                                 "status": iso.get("isoformSequenceStatus", "")})
+                                 "status": iso.get("isoformSequenceStatus", ""),
+                                 "synonyms": [x.get("value", "") for x in iso.get("synonyms") or []],
+                                 "vsp": iso.get("sequenceIds") or []})
     feats = []
     for f in d.get("features") or []:
         s, e = _loc(f)
@@ -157,7 +159,7 @@ def parse_entry(d: dict) -> dict:
             continue
         item = {"type": f.get("type"), "start": int(s), "end": int(e), "description": f.get("description", "") or ""}
         alt = f.get("alternativeSequence") or {}
-        if f.get("type") in ("Natural variant", "Mutagenesis") and alt:
+        if f.get("type") in ("Natural variant", "Mutagenesis", "Alternative sequence") and alt:
             item["ref"] = alt.get("originalSequence", "")
             item["alt"] = alt.get("alternativeSequences") or []
         if f.get("featureId"):

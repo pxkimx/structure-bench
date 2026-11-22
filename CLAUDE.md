@@ -76,3 +76,16 @@ Two traps for anyone touching this:
 - Find a server with `lsof -nP -iTCP:$PORT -sTCP:LISTEN -t`, never `lsof -ti tcp:$PORT`, which also matches the
   browser's own end of the connection and lingers after the app quits — the app would refuse to start
   ("Port 8767 is used by another program"), or pipe the browser's pid into `kill`.
+
+## Progerin (HGPS) mode (added 0.1.7, 2026-11-22)
+`server/progerin.py` → `res["progerin"]` for UniProt P02545 only (`block()` returns None otherwise); page section
+`progerinCards` in `web/index.html`; PDF `report.progerin_section`; routes `/progerin.fasta`, `/progerin.pml`.
+- **Coordinates come from the loaded UniProt record** (isoform "Progerin" → its VSP feature; site "Cleavage";
+  lipidation; chain "Lamin-A/C"; isoform "Lamin-C"). `EXPECTED` holds the literature values and the tests compare
+  the two. If UniProt changes a feature, the page follows and a test fails — look, don't just edit `EXPECTED`.
+- Facts not in UniProt (`MUTATION`, `OTHER_VARIANTS`, `MOUSE`, `PAPERS`) carry their source and `VERIFIED` date.
+  Paul's rule: never write a coordinate, variant, PMID or trial result from memory — read the source, then cite it.
+  Texts were written against the fetched abstracts; keep claims within what those say.
+- `uniprot.parse_entry` now keeps isoform `synonyms` and `vsp` ids, and `alt` on Alternative sequence features.
+- `S.view` is null until `viewerCard` runs: cards rendered before it must not read `S.view.x` unguarded.
+- No progerin structure is predicted, on purpose (the tail is low-pLDDT). Don't add one without asking Paul.

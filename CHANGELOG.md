@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.1.7 — 2026-11-22
+- **Progerin (HGPS) mode.** Look up human LMNA (UniProt P02545) and a new section shows what the Hutchinson–Gilford
+  progeria mutation does to lamin A.
+  - **The facts, each with its source.** c.1824C>T (G608G) and its ClinVar record; the 50 residues missing in progerin
+    (607–656); the ZMPSTE24 site (646|647), which lies inside the deletion; the CaaX motif (CSIM, farnesyl cysteine
+    C661), which progerin keeps; lamin C; the mouse position (human G608 = mouse G609, with the aligned sequences);
+    G608S in the same codon.
+  - **Read from the record, not typed in.** The deletion, cleavage site, lipidation, mature chain, lamin C isoform,
+    NLS and Ig fold are the features of the UniProt entry that is loaded, so they follow the record. ClinVar, the
+    mouse entry and the papers were read on 2026-11-22 and are cited on the page, in the PDF and in `progerin.py`.
+  - **A figure.** Prelamin A with its domains, the deleted segment hatched, the cut and the farnesyl cysteine marked,
+    and mature lamin A, progerin and lamin C drawn as aligned bars below. Your mapped variants are on it. SVG download.
+  - **On the model.** One button highlights the deleted segment, the cleavage site, C661, the Ig fold and the NLS in
+    the 3D viewer, on whichever structure is shown. A table gives the AlphaFold confidence of each part and says
+    plainly that the tail is low-confidence: the model shows position, not a fold. No progerin structure is predicted.
+  - **Your variants against the deletion.** Before it (same number in progerin), inside it (the residue does not
+    exist in progerin), or after it (renumbered by −50), next to UniProt's own HGPS variants.
+  - **Why progerin stays farnesylated, and lonafarnib**, in plain words with the trial and approval cited.
+  - **Exports.** Progerin FASTA, a PyMOL script that colours the deleted segment and landmarks, and a section in
+    the PDF report.
+  - Any other protein shows no progerin mode. `tests/test_progerin.py` checks the lengths, the boundaries against
+    UniProt and the literature, that the cut is inside the deletion, the mouse mapping and the non-LMNA case.
+- Saved LMNA look-ups from earlier versions are rebuilt once (result format 3).
+
 ## 0.1.6 — 2026-11-22
 - **The Light | Dark switch is reachable in a narrow window.** Below 900 px wide — which includes the frame
   Toolbox Launcher shows the app in — the sidebar folds into a bar and hid its footer, with the switch inside it.
