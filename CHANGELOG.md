@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.6 — 2026-11-22
+- **The Light | Dark switch is reachable in a narrow window.** Below 900 px wide — which includes the frame
+  Toolbox Launcher shows the app in — the sidebar folds into a bar and hid its footer, with the switch inside it.
+  The switch now has its own place in that bar (as in RNAseq Bench).
+- **Plain errors for incomplete requests.** A call to the residue-environment or isoform API with a field missing
+  returned FastAPI's raw validation answer (422); it now gets the same kind of 400 as the app's other errors,
+  naming the missing field.
+
 ## 0.1.5 — 2026-10-07
 - **Light | Dark switch.** A two-way pill with sun and moon icons at the bottom of the sidebar replaces the single
   toggle button. The lit half shows the theme in use: your choice, or the Mac's own setting until you pick one. The

@@ -7,6 +7,7 @@ import os
 import threading
 import traceback
 
+from fastapi.exceptions import RequestValidationError
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -29,6 +30,16 @@ print(f"Structure Bench {VERSION} — data in {HOME} — python {__import__('pla
 @app.exception_handler(UserFacingError)
 async def _user_error(_: Request, exc: UserFacingError):
     return JSONResponse({"detail": str(exc)}, status_code=400)
+
+
+@app.exception_handler(RequestValidationError)
+async def _bad_request(_: Request, exc: RequestValidationError):
+    """A missing or wrong field is the caller's mistake, said plainly (FastAPI's own answer is a 422 with raw details)."""
+    parts = []
+    for e in exc.errors():
+        loc = [str(x) for x in e.get("loc", []) if x not in ("body", "query", "path")]
+        parts.append((".".join(loc) + ": " if loc else "") + e.get("msg", "invalid"))
+    return JSONResponse({"detail": "The request is incomplete — " + "; ".join(parts) + "."}, status_code=400)
 
 
 @app.exception_handler(Exception)
